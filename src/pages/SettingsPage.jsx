@@ -1,0 +1,394 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useSettings } from '../hooks/useSettings.js';
+import { useApi } from '../hooks/useApi.js';
+
+export default function SettingsPage() {
+  const { settings, saveSettings } = useSettings();
+  const [radius, setRadius] = useState(200);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  // Email notification settings
+  const [emailEnabled,         setEmailEnabled]         = useState(true);
+  const [notifyArrived,        setNotifyArrived]        = useState(true);
+  const [notifyDeparted,       setNotifyDeparted]       = useState(false);
+  const [fromName,             setFromName]             = useState('The Avo Tree');
+  const [maintenanceAlertEmail, setMaintenanceAlertEmail] = useState('');
+  const [emailSaving,          setEmailSaving]          = useState(false);
+  const [emailSaved,           setEmailSaved]           = useState(false);
+  const [testSending,          setTestSending]          = useState(false);
+  const [testResult,           setTestResult]           = useState(null);
+
+  const { data: locations, refetch: refetchLocations } = useApi('/api/locations');
+  const { data: growers } = useApi('/api/growers');
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
+
+  const boundaryCount = growers?.filter(g => g.boundary).length ?? 0;
+  const totalGeocoded = growers?.filter(g => g.lat).length ?? 0;
+
+  async function handleBackfillBoundaries() {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch('/api/growers/backfill-boundaries', { method: 'POST' });
+      const data = await res.json();
+      setBackfillResult(data);
+    } catch {
+      setBackfillResult({ error: 'Failed' });
+    }
+    setBackfilling(false);
+  }
+  const [locName, setLocName] = useState('');
+  const [locAddress, setLocAddress] = useState('');
+  const [locType, setLocType] = useState('base');
+  const [addingLoc, setAddingLoc] = useState(false);
+  const [deletingLoc, setDeletingLoc] = useState(null);
+
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.geofence_radius_metres)    setRadius(Number(settings.geofence_radius_metres));
+    if (settings.email_notifications_enabled !== undefined) setEmailEnabled(settings.email_notifications_enabled !== 'false');
+    if (settings.notify_on_arrived  !== undefined) setNotifyArrived(settings.notify_on_arrived   !== 'false');
+    if (settings.notify_on_departed !== undefined) setNotifyDeparted(settings.notify_on_departed !== 'false');
+    if (settings.notify_from_name)  setFromName(settings.notify_from_name);
+    if (settings.maintenance_alert_email !== undefined) setMaintenanceAlertEmail(settings.maintenance_alert_email);
+  }, [settings]);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    const ok = await saveSettings({ geofence_radius_metres: radius });
+    if (ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    else alert('Failed to save settings.');
+    setSaving(false);
+  }
+
+  async function handleEmailSave() {
+    setEmailSaving(true); setEmailSaved(false);
+    const ok = await saveSettings({
+      email_notifications_enabled: String(emailEnabled),
+      notify_on_arrived:           String(notifyArrived),
+      notify_on_departed:          String(notifyDeparted),
+      notify_from_name:            fromName,
+      maintenance_alert_email:     maintenanceAlertEmail,
+    });
+    if (ok) { setEmailSaved(true); setTimeout(() => setEmailSaved(false), 3000); }
+    else alert('Failed to save email settings.');
+    setEmailSaving(false);
+  }
+
+  async function handleTestEmail() {
+    setTestSending(true); setTestResult(null);
+    try {
+      const res = await fetch('/api/notifications/test-email', { method: 'POST' });
+      const data = await res.json();
+      setTestResult(data);
+    } catch (e) { setTestResult({ error: e.message }); }
+    setTestSending(false);
+  }
+
+  async function handleAddLocation(e) {
+    e.preventDefault();
+    if (!locName.trim() || !locAddress.trim()) return;
+    setAddingLoc(true);
+    try {
+      const res = await fetch('/api/locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: locName.trim(), address: locAddress.trim(), type: locType }),
+      });
+      if (res.ok) {
+        setLocName('');
+        setLocAddress('');
+        setLocType('base');
+        refetchLocations();
+      } else {
+        alert('Failed to add location.');
+      }
+    } catch {
+      alert('Failed to add location.');
+    }
+    setAddingLoc(false);
+  }
+
+  async function handleDeleteLocation(id) {
+    setDeletingLoc(id);
+    try {
+      await fetch(`/api/locations/${id}`, { method: 'DELETE' });
+      refetchLocations();
+    } catch {
+      alert('Failed to delete location.');
+    }
+    setDeletingLoc(null);
+  }
+
+  const currentRadius = Number(settings?.geofence_radius_metres) || 200;
+
+  return (
+    <div className="page">
+      <h1 className="page-title">Settings</h1>
+
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500 }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          Geofence Radius
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+          Distance from each orchard pin that triggers an arrival or departure notification.
+          Reduce this if neighbouring orchards are overlapping.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+          <input
+            type="range"
+            min={50}
+            max={500}
+            step={10}
+            value={radius}
+            onChange={e => setRadius(Number(e.target.value))}
+            style={{ flex: 1, accentColor: '#2d6a2d' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <input
+              type="number"
+              min={50}
+              max={500}
+              step={10}
+              value={radius}
+              onChange={e => setRadius(Number(e.target.value))}
+              style={{ width: 70, padding: '0.35rem 0.5rem', borderRadius: 6,
+                border: '1px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }}
+            />
+            <span style={{ color: '#5a6a5a', fontSize: '0.88rem' }}>metres</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1rem' }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Settings'}
+          </button>
+          {saved && <span style={{ color: '#2d6a2d', fontSize: '0.88rem', fontWeight: 600 }}>✓ Saved — map updated</span>}
+        </div>
+
+        <div style={{ marginTop: '1.5rem', padding: '0.75rem 1rem',
+          background: '#e8f5e8', borderRadius: 8, fontSize: '0.85rem', color: '#2d6a2d' }}>
+          <strong>Active radius:</strong> {currentRadius}m
+          {radius !== currentRadius && <span style={{ color: '#f0a500' }}> → pending: {radius}m (unsaved)</span>}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          Special Locations
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+          Packhouses, depots, and other fixed sites shown on the map with a red HQ marker.
+        </p>
+
+        {/* Existing locations list */}
+        {locations?.length > 0 && (
+          <div style={{ marginBottom: '1rem' }}>
+            {locations.map(l => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', padding: '0.5rem 0.75rem', borderRadius: 6,
+                background: '#f5f9f5', marginBottom: '0.4rem', fontSize: '0.88rem' }}>
+                <div>
+                  <strong>{l.name}</strong>
+                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#5a6a5a',
+                    background: '#d4e0d4', borderRadius: 4, padding: '0 6px' }}>{l.type}</span>
+                  <div style={{ color: '#5a6a5a', fontSize: '0.82rem', marginTop: 2 }}>{l.address}</div>
+                  {!l.lat && <div style={{ color: '#f0a500', fontSize: '0.78rem' }}>Geocoding pending</div>}
+                </div>
+                <button
+                  onClick={() => handleDeleteLocation(l.id)}
+                  disabled={deletingLoc === l.id}
+                  style={{ background: 'none', border: 'none', color: '#c0392b',
+                    cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.25rem' }}
+                  title="Remove location"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add new location form */}
+        <form onSubmit={handleAddLocation}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <input
+              type="text"
+              placeholder="Name (e.g. Te Puna Packhouse)"
+              value={locName}
+              onChange={e => setLocName(e.target.value)}
+              style={{ padding: '0.4rem 0.6rem', borderRadius: 6,
+                border: '1px solid #d4e0d4', fontSize: '0.9rem' }}
+            />
+            <input
+              type="text"
+              placeholder="Address (e.g. 89 Te Puna Road, Te Puna)"
+              value={locAddress}
+              onChange={e => setLocAddress(e.target.value)}
+              style={{ padding: '0.4rem 0.6rem', borderRadius: 6,
+                border: '1px solid #d4e0d4', fontSize: '0.9rem' }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <select
+                value={locType}
+                onChange={e => setLocType(e.target.value)}
+                style={{ padding: '0.4rem 0.6rem', borderRadius: 6,
+                  border: '1px solid #d4e0d4', fontSize: '0.9rem', flex: 1 }}
+              >
+                <option value="base">Base / Packhouse</option>
+                <option value="depot">Depot</option>
+                <option value="other">Other</option>
+              </select>
+              <button className="btn btn-primary" type="submit" disabled={addingLoc || !locName.trim() || !locAddress.trim()}>
+                {addingLoc ? 'Adding…' : 'Add Location'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          Property Boundary Geofencing
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+          Fetches actual cadastral parcel outlines from LINZ (Land Information New Zealand)
+          so geofence detection uses real property boundaries instead of circles.
+          Requires a free <strong>LINZ_API_KEY</strong> in the backend .env.
+        </p>
+
+        <div style={{ padding: '0.6rem 0.9rem', background: '#e8f5e8', borderRadius: 6,
+          fontSize: '0.85rem', color: '#2d6a2d', marginBottom: '1rem' }}>
+          <strong>{boundaryCount}</strong> of <strong>{totalGeocoded}</strong> orchards have property boundaries
+          {totalGeocoded > 0 && boundaryCount < totalGeocoded && (
+            <span style={{ color: '#f0a500' }}> — {totalGeocoded - boundaryCount} still using radius circles</span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleBackfillBoundaries}
+            disabled={backfilling || !totalGeocoded}
+          >
+            {backfilling ? 'Fetching boundaries…' : 'Fetch Missing Boundaries'}
+          </button>
+          {backfillResult && !backfillResult.error && (
+            <span style={{ fontSize: '0.85rem', color: '#2d6a2d', fontWeight: 600 }}>
+              ✓ Updated {backfillResult.updated} of {backfillResult.total}
+            </span>
+          )}
+          {backfillResult?.error && (
+            <span style={{ fontSize: '0.85rem', color: '#c0392b' }}>Failed — check LINZ_API_KEY</span>
+          )}
+        </div>
+        <p style={{ color: '#5a6a5a', fontSize: '0.82rem', marginBottom: 0, marginTop: '0.75rem' }}>
+          This runs once against the LINZ API for each orchard without a boundary. Takes ~1 minute for 320 orchards.
+          Orchards without a match automatically fall back to the radius circle above.
+        </p>
+      </div>
+
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          Orchard Pin Positions
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', margin: 0 }}>
+          To adjust individual orchard pin positions, go to the <strong>Live Map</strong> tab,
+          click <strong>Edit Pins</strong>, then drag any pin to the correct location.
+          Neighbour address numbers are shown in edit mode to help with placement.
+        </p>
+      </div>
+
+      {/* Email Notifications */}
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          Email Notifications
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+          Automatically email growers when a picking vehicle arrives at or departs from their orchard.
+          Requires a <strong>RESEND_API_KEY</strong> in the backend .env file.
+        </p>
+
+        {/* API key status */}
+        <div style={{ padding: '0.6rem 0.9rem', borderRadius: 6, fontSize: '0.83rem',
+          marginBottom: '1.1rem',
+          background: settings?.resend_configured === 'true' ? '#e8f5e8' : '#fff3cd',
+          color: settings?.resend_configured === 'true' ? '#1a5c1a' : '#856404' }}>
+          {settings?.resend_configured === 'true'
+            ? '✓ Resend API key configured — emails will send'
+            : '⚠ No RESEND_API_KEY found — add it to backend/.env to enable sending'}
+        </div>
+
+        {/* Master toggle */}
+        <Toggle label="Email notifications enabled" checked={emailEnabled} onChange={setEmailEnabled} />
+
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem',
+          opacity: emailEnabled ? 1 : 0.45, pointerEvents: emailEnabled ? 'auto' : 'none',
+          display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <Toggle label="Notify grower on arrival" checked={notifyArrived}  onChange={setNotifyArrived} />
+          <Toggle label="Notify grower on departure" checked={notifyDeparted} onChange={setNotifyDeparted} />
+        </div>
+
+        {/* From name */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5a6a5a',
+            display: 'block', marginBottom: 4 }}>Sender name</label>
+          <input type="text" value={fromName} onChange={e => setFromName(e.target.value)}
+            style={{ padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid #d4e0d4',
+              fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+            placeholder="The Avo Tree" />
+          <div style={{ fontSize: '0.75rem', color: '#8a9e8c', marginTop: 3 }}>
+            Appears as the sender name in growers' inboxes. The from address is set by NOTIFY_FROM_EMAIL in .env.
+          </div>
+        </div>
+
+        {/* Maintenance alert email */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5a6a5a',
+            display: 'block', marginBottom: 4 }}>Fleet maintenance alert email</label>
+          <input type="email" value={maintenanceAlertEmail}
+            onChange={e => setMaintenanceAlertEmail(e.target.value)}
+            style={{ padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid #d4e0d4',
+              fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }}
+            placeholder="e.g. sam@theavotree.co.nz" />
+          <div style={{ fontSize: '0.75rem', color: '#8a9e8c', marginTop: 3 }}>
+            Receives daily alerts when rego/WOF expiry is within 30 days or RUC/service is within 1,000 km.
+            Leave blank to disable fleet alerts.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleEmailSave} disabled={emailSaving}>
+            {emailSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn" onClick={handleTestEmail} disabled={testSending}>
+            {testSending ? 'Sending…' : 'Send Test Email'}
+          </button>
+          {emailSaved && <span style={{ color: '#2d6a2d', fontSize: '0.88rem', fontWeight: 600 }}>✓ Saved</span>}
+          {testResult?.sent  && <span style={{ color: '#2d6a2d', fontSize: '0.85rem' }}>✓ Test sent to {testResult.to}</span>}
+          {testResult?.error && <span style={{ color: '#c0392b', fontSize: '0.85rem' }}>{testResult.error}</span>}
+          {testResult?.skipped && <span style={{ color: '#856404', fontSize: '0.85rem' }}>Skipped: {testResult.skipped}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+      <div onClick={() => onChange(!checked)}
+        style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0,
+          background: checked ? '#2d6a2d' : '#ccc', transition: 'background 0.2s', cursor: 'pointer' }}>
+        <div style={{ position: 'absolute', top: 3, left: checked ? 21 : 3,
+          width: 16, height: 16, borderRadius: '50%', background: '#fff',
+          transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+      </div>
+      <span style={{ fontSize: '0.88rem', color: '#1c2b1e' }}>{label}</span>
+    </label>
+  );
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="#2d6a2d"/>
+  <!-- Avocado body (outer - dark green) -->
+  <ellipse cx="256" cy="272" rx="118" ry="155" fill="#1a4a1a"/>
+  <!-- Avocado flesh (inner - light green/yellow) -->
+  <ellipse cx="256" cy="282" rx="96" ry="128" fill="#c8e86e"/>
+  <!-- Avocado seed -->
+  <ellipse cx="256" cy="300" rx="42" ry="52" fill="#7c3f00"/>
+  <ellipse cx="256" cy="296" rx="32" ry="40" fill="#9b5200"/>
+</svg>
