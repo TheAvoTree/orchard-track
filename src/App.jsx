@@ -34,7 +34,12 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div className="app-logo">
-          <span className="app-logo-icon">🥑</span>
+          <img
+            className="app-logo-img"
+            src="https://theavotree.co.nz/wp-content/uploads/2025/08/IDLogotypeColorGreen.svg"
+            alt="The Avo Tree"
+          />
+          <span className="app-logo-sep" />
           <span className="app-logo-text">Orchard Track</span>
         </div>
         <nav className="app-nav">
