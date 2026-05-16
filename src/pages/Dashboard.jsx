@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, Fragment } from 'react';
+import { useState, useCallback, useMemo, useRef, Fragment } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Circle, Polygon, InfoWindow } from '@react-google-maps/api';
 import { useLivePositions } from '../hooks/useLivePositions.js';
 import { useApi } from '../hooks/useApi.js';
@@ -54,6 +54,24 @@ export default function Dashboard() {
   const [editPins,   setEditPins]   = useState(false);
   const [savingPin,  setSavingPin]  = useState(null);
   const [showFilter, setShowFilter] = useState(false);
+  const [mapSearch, setMapSearch] = useState('');
+  const mapRef = useRef(null);
+
+  const searchMatches = useMemo(() => {
+    const q = mapSearch.trim().toLowerCase();
+    if (!q || !growers) return [];
+    return growers
+      .filter(g => g.name.toLowerCase().includes(q) || g.address?.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [mapSearch, growers]);
+
+  function flyToGrower(g) {
+    if (!g.lat || !mapRef.current) return;
+    mapRef.current.panTo({ lat: g.lat, lng: g.lng });
+    mapRef.current.setZoom(17);
+    setSelectedGrower(g);
+    setMapSearch('');
+  }
 
   // Filter state
   const [filterVariety,    setFilterVariety]    = useState('all'); // 'all' | 'hass' | 'reeds' | 'mixed'
@@ -163,6 +181,51 @@ export default function Dashboard() {
             >
               ⚙ Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
             </button>
+          </div>
+
+          {/* Map grower search */}
+          <div style={{ position: 'relative', width: 260 }}>
+            <input
+              type="search"
+              placeholder="🔍 Search growers…"
+              value={mapSearch}
+              onChange={e => setMapSearch(e.target.value)}
+              style={{
+                width: '100%', padding: '0.45rem 0.75rem', borderRadius: 8,
+                border: '1px solid #d4e0d4', fontSize: '0.88rem',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.2)', boxSizing: 'border-box',
+              }}
+            />
+            {searchMatches.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,0.25)',
+                maxHeight: 320, overflowY: 'auto', zIndex: 20,
+              }}>
+                {searchMatches.map(g => (
+                  <button
+                    key={g.id}
+                    onClick={() => flyToGrower(g)}
+                    disabled={!g.lat}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '0.55rem 0.75rem', border: 'none',
+                      borderBottom: '1px solid #eef2ee', background: 'transparent',
+                      cursor: g.lat ? 'pointer' : 'not-allowed',
+                      opacity: g.lat ? 1 : 0.5, fontSize: '0.85rem',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f5f9f5'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ fontWeight: 600, color: '#11420A' }}>{g.name}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#5a6a5a' }}>
+                      {g.address}
+                      {!g.lat && <span style={{ marginLeft: 6, color: '#aaa' }}>(no pin)</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {editPins && (
@@ -285,6 +348,7 @@ export default function Dashboard() {
           center={MAP_CENTER}
           zoom={11}
           options={MAP_OPTIONS}
+          onLoad={map => { mapRef.current = map; }}
         >
           {filteredGrowers.map(g => {
             const boundary = g.boundary

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useApi } from '../hooks/useApi.js';
 
-const TH = { padding: '0.55rem 0.75rem', fontWeight: 700, color: '#2d6a2d', fontSize: '0.8rem', textAlign: 'left', whiteSpace: 'nowrap' };
+const TH = { padding: '0.55rem 0.75rem', fontWeight: 700, color: '#11420A', fontSize: '0.8rem', textAlign: 'left', whiteSpace: 'nowrap' };
 const TD = { padding: '0.5rem 0.75rem', verticalAlign: 'middle', fontSize: '0.85rem' };
 
 function Field({ label, children, style }) {
@@ -20,6 +20,7 @@ export default function GrowersPage() {
   const [search, setSearch]   = useState('');
   const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const filtered = data?.filter(g =>
     g.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -40,6 +41,17 @@ export default function GrowersPage() {
     }
   }
 
+  async function handleDelete(g) {
+    if (!confirm(`Delete grower "${g.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/growers/${g.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      refetch();
+    } catch (err) {
+      alert(err.message || 'Delete failed');
+    }
+  }
+
   return (
     <div className="page">
       {/* Header */}
@@ -51,7 +63,7 @@ export default function GrowersPage() {
             onChange={e => setSearch(e.target.value)}
             style={{ padding: '0.4rem 0.75rem', borderRadius: 7, border: '1px solid #d4e0d4',
               fontSize: '0.88rem', width: 200 }} />
-          <button className="btn" onClick={() => setShowAdd(v => !v)} style={{ fontSize: '0.85rem' }}>
+          <button className="btn" onClick={() => { setShowAdd(v => !v); setEditingId(null); }} style={{ fontSize: '0.85rem' }}>
             {showAdd ? 'Cancel' : '+ Add Grower'}
           </button>
           <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
@@ -62,7 +74,7 @@ export default function GrowersPage() {
 
       {/* Add grower form */}
       {showAdd && (
-        <AddGrowerForm onAdded={() => { setShowAdd(false); refetch(); }} />
+        <GrowerForm onSaved={() => { setShowAdd(false); refetch(); }} />
       )}
 
       {/* Table */}
@@ -83,45 +95,73 @@ export default function GrowersPage() {
                   <th style={TH}>Spray Free</th>
                   <th style={TH}>Gate Code</th>
                   <th style={TH}>Pin</th>
+                  <th style={{ ...TH, textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((g, i) => (
-                  <tr key={g.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafcfa',
-                    borderBottom: '1px solid #eef2ee' }}>
-                    <td style={{ ...TD, color: '#5a6a5a', fontSize: '0.78rem' }}>{g.external_id ?? '—'}</td>
-                    <td style={{ ...TD, fontWeight: 500 }}>
-                      {g.name}
-                      {g.email && (
-                        <div style={{ fontSize: '0.75rem', color: '#5a6a5a', fontWeight: 400 }}>{g.email}</div>
-                      )}
-                    </td>
-                    <td style={{ ...TD, color: '#5a6a5a', maxWidth: 200 }}>{g.address}</td>
-                    <td style={TD}>{g.phone ?? '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>{g.hass_trees ?? '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>{g.reeds_trees ?? '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>
-                      {g.spray_free
-                        ? <span style={{ background: '#e8f5e8', color: '#1a5c1a', border: '1px solid #a8d8a8',
-                            borderRadius: 10, padding: '1px 8px', fontSize: '0.75rem', fontWeight: 600 }}>
-                            Spray Free
-                          </span>
-                        : <span style={{ color: '#bbb', fontSize: '0.75rem' }}>—</span>}
-                    </td>
-                    <td style={{ ...TD, fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                      {g.gate_code
-                        ? <span style={{ background: '#fff3cd', color: '#856404', border: '1px solid #ffc107',
-                            borderRadius: 6, padding: '1px 7px', fontSize: '0.78rem' }}>
-                            {g.gate_code}
-                          </span>
-                        : <span style={{ color: '#bbb' }}>—</span>}
-                    </td>
-                    <td style={{ ...TD, textAlign: 'center' }}>
-                      {g.lat
-                        ? <span style={{ color: '#2d6a2d', fontSize: '0.85rem' }}>✓</span>
-                        : <span style={{ color: '#aaa', fontSize: '0.75rem' }}>pending</span>}
-                    </td>
-                  </tr>
+                  <Fragment key={g.id}>
+                    <tr style={{ background: i % 2 === 0 ? '#fff' : '#fafcfa',
+                      borderBottom: '1px solid #eef2ee' }}>
+                      <td style={{ ...TD, color: '#5a6a5a', fontSize: '0.78rem' }}>{g.external_id ?? '—'}</td>
+                      <td style={{ ...TD, fontWeight: 500 }}>
+                        {g.name}
+                        {g.email && (
+                          <div style={{ fontSize: '0.75rem', color: '#5a6a5a', fontWeight: 400 }}>{g.email}</div>
+                        )}
+                      </td>
+                      <td style={{ ...TD, color: '#5a6a5a', maxWidth: 200 }}>{g.address}</td>
+                      <td style={TD}>{g.phone ?? '—'}</td>
+                      <td style={{ ...TD, textAlign: 'center' }}>{g.hass_trees ?? '—'}</td>
+                      <td style={{ ...TD, textAlign: 'center' }}>{g.reeds_trees ?? '—'}</td>
+                      <td style={{ ...TD, textAlign: 'center' }}>
+                        {g.spray_free
+                          ? <span style={{ background: '#e8f5e8', color: '#1a5c1a', border: '1px solid #a8d8a8',
+                              borderRadius: 10, padding: '1px 8px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              Spray Free
+                            </span>
+                          : <span style={{ color: '#bbb', fontSize: '0.75rem' }}>—</span>}
+                      </td>
+                      <td style={{ ...TD, fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                        {g.gate_code
+                          ? <span style={{ background: '#fff3cd', color: '#856404', border: '1px solid #ffc107',
+                              borderRadius: 6, padding: '1px 7px', fontSize: '0.78rem' }}>
+                              {g.gate_code}
+                            </span>
+                          : <span style={{ color: '#bbb' }}>—</span>}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'center' }}>
+                        {g.lat
+                          ? <span style={{ color: '#11420A', fontSize: '0.85rem' }}>✓</span>
+                          : <span style={{ color: '#aaa', fontSize: '0.75rem' }}>pending</span>}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          onClick={() => { setEditingId(editingId === g.id ? null : g.id); setShowAdd(false); }}
+                          style={{ background: 'none', border: '1px solid #d4e0d4', color: '#11420A',
+                            padding: '3px 9px', borderRadius: 5, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {editingId === g.id ? 'Close' : 'Edit'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(g)}
+                          style={{ background: 'none', border: 'none', color: '#c0392b',
+                            padding: '3px 6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, marginLeft: 4 }}>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                    {editingId === g.id && (
+                      <tr>
+                        <td colSpan={10} style={{ padding: 0, background: '#f5f9f5' }}>
+                          <GrowerForm
+                            grower={g}
+                            onSaved={() => { setEditingId(null); refetch(); }}
+                            onCancel={() => setEditingId(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -137,13 +177,22 @@ export default function GrowersPage() {
   );
 }
 
-function AddGrowerForm({ onAdded }) {
+function GrowerForm({ grower, onSaved, onCancel }) {
+  const isEdit = !!grower;
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
   const [form, setForm] = useState({
-    name: '', address: '', phone: '', email: '',
-    hass_trees: '', reeds_trees: '', spray_free: false, gate_code: '',
-    bank_account_name: '', bank_account_number: '', gst_number: '',
+    name:    grower?.name    ?? '',
+    address: grower?.address ?? '',
+    phone:   grower?.phone   ?? '',
+    email:   grower?.email   ?? '',
+    hass_trees:  grower?.hass_trees  ?? '',
+    reeds_trees: grower?.reeds_trees ?? '',
+    spray_free:  grower?.spray_free  ?? false,
+    gate_code:   grower?.gate_code   ?? '',
+    bank_account_name:   grower?.bank_account_name   ?? '',
+    bank_account_number: grower?.bank_account_number ?? '',
+    gst_number:          grower?.gst_number          ?? '',
   });
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })); }
@@ -153,31 +202,36 @@ function AddGrowerForm({ onAdded }) {
     if (!form.name.trim() || !form.address.trim()) return;
     setSaving(true); setError('');
     try {
-      const res = await fetch('/api/growers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          hass_trees:  parseInt(form.hass_trees)  || null,
-          reeds_trees: parseInt(form.reeds_trees) || null,
-          phone:       form.phone.trim()  || null,
-          email:       form.email.trim()  || null,
-          gate_code:   form.gate_code.trim() || null,
-          bank_account_name:   form.bank_account_name.trim()   || null,
-          bank_account_number: form.bank_account_number.trim() || null,
-          gst_number:          form.gst_number.trim()          || null,
-        }),
-      });
+      const payload = {
+        ...form,
+        hass_trees:  form.hass_trees  === '' ? null : parseInt(form.hass_trees),
+        reeds_trees: form.reeds_trees === '' ? null : parseInt(form.reeds_trees),
+        phone:       form.phone.trim()  || null,
+        email:       form.email.trim()  || null,
+        gate_code:   form.gate_code.trim() || null,
+        bank_account_name:   form.bank_account_name.trim()   || null,
+        bank_account_number: form.bank_account_number.trim() || null,
+        gst_number:          form.gst_number.trim()          || null,
+      };
+      const res = await fetch(
+        isEdit ? `/api/growers/${grower.id}` : '/api/growers',
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed'); setSaving(false); return; }
-      onAdded();
+      onSaved();
     } catch (err) { setError(err.message); setSaving(false); }
   }
 
   return (
-    <div className="card" style={{ padding: '1.1rem', marginBottom: '1rem', background: '#f5f9f5' }}>
-      <div style={{ fontWeight: 700, color: '#2d6a2d', fontSize: '0.9rem', marginBottom: '0.85rem' }}>
-        Add New Grower
+    <div className="card" style={{ padding: '1.1rem', marginBottom: isEdit ? 0 : '1rem',
+      background: '#f5f9f5', borderRadius: isEdit ? 0 : 10 }}>
+      <div style={{ fontWeight: 700, color: '#11420A', fontSize: '0.9rem', marginBottom: '0.85rem' }}>
+        {isEdit ? `Edit ${grower.name}` : 'Add New Grower'}
       </div>
       <form onSubmit={handleSubmit}>
 
@@ -220,10 +274,10 @@ function AddGrowerForm({ onAdded }) {
               onChange={e => set('gate_code', e.target.value)} placeholder="e.g. 1234#" />
           </Field>
           <div style={{ flex: '0 0 auto', paddingBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
-            <input type="checkbox" id="spray_free" checked={form.spray_free}
+            <input type="checkbox" id={`spray_free_${grower?.id ?? 'new'}`} checked={form.spray_free}
               onChange={e => set('spray_free', e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: '#2d6a2d', cursor: 'pointer' }} />
-            <label htmlFor="spray_free" style={{ fontSize: '0.85rem', color: '#2d6a2d', fontWeight: 600, cursor: 'pointer' }}>
+              style={{ width: 16, height: 16, accentColor: '#11420A', cursor: 'pointer' }} />
+            <label htmlFor={`spray_free_${grower?.id ?? 'new'}`} style={{ fontSize: '0.85rem', color: '#11420A', fontWeight: 600, cursor: 'pointer' }}>
               Spray Free
             </label>
           </div>
@@ -256,8 +310,11 @@ function AddGrowerForm({ onAdded }) {
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button className="btn btn-primary" type="submit" disabled={saving || !form.name.trim() || !form.address.trim()}>
-            {saving ? 'Adding…' : 'Add Grower'}
+            {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Add Grower')}
           </button>
+          {isEdit && onCancel && (
+            <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+          )}
           {error && <span style={{ fontSize: '0.82rem', color: '#c0392b' }}>{error}</span>}
         </div>
       </form>
