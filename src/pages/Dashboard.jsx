@@ -1,9 +1,12 @@
-import { useState, useCallback, useMemo, useRef, Fragment } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Circle, Polygon, InfoWindow } from '@react-google-maps/api';
+import { io as socketIO } from 'socket.io-client';
 import { useLivePositions } from '../hooks/useLivePositions.js';
 import { useApi } from '../hooks/useApi.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { formatDistanceToNow } from 'date-fns';
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
 
 const MAP_CENTER = { lat: -37.6878, lng: 176.1651 };
 const MAP_OPTIONS = {
@@ -45,7 +48,27 @@ export default function Dashboard() {
   const { data: events } = useApi('/api/events?limit=10');
   const { data: locations } = useApi('/api/locations');
   const { data: pickingPlan } = useApi('/api/picking-plan?season=2026%2F27');
+  const { data: activeHazards } = useApi('/api/safety/hazards?status=active');
   const { settings } = useSettings();
+
+  // Group active hazards by grower_id for quick lookup
+  const hazardsByGrower = useMemo(() => {
+    const m = new Map();
+    if (!activeHazards) return m;
+    for (const h of activeHazards) {
+      if (!m.has(h.grower_id)) m.set(h.grower_id, []);
+      m.get(h.grower_id).push(h);
+    }
+    return m;
+  }, [activeHazards]);
+
+  // In-app warning banner shown when a vehicle arrives at an orchard with hazards
+  const [arrivalWarning, setArrivalWarning] = useState(null);
+  useEffect(() => {
+    const socket = socketIO(BACKEND || window.location.origin);
+    socket.on('safety:arrival', (payload) => setArrivalWarning(payload));
+    return () => socket.disconnect();
+  }, []);
 
   const radius = Number(settings?.geofence_radius_metres) || 200;
 
@@ -160,9 +183,56 @@ export default function Dashboard() {
 
   const ringToPath = ring => ring.map(([lng, lat]) => ({ lat, lng }));
 
+  // Icon for hazard markers on the map
+  const hazardIcon = (type) => ({
+    path: 'M12 2 L22 20 L2 20 Z',  // triangle
+    fillColor: type === 'powerline' ? '#f1c40f' : '#e67e22',
+    fillOpacity: 1,
+    strokeColor: '#fff',
+    strokeWeight: 1.5,
+    scale: 1.2,
+    anchor: new window.google.maps.Point(12, 20),
+  });
+
   return (
     <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 56px)' }}>
       <div style={{ flex: 1, position: 'relative' }}>
+
+        {/* Arrival hazard warning banner — fires when any vehicle enters a geofence with active hazards */}
+        {arrivalWarning && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
+            background: '#c0392b', color: '#fff', padding: '0.9rem 1.2rem',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+                ⚠ Safety warning — {arrivalWarning.vehicle_name}
+                {arrivalWarning.driver_name && ` (${arrivalWarning.driver_name})`} arrived at {arrivalWarning.grower_name}
+              </div>
+              {arrivalWarning.spray && (
+                <div style={{ fontSize: '0.88rem', marginTop: 2 }}>
+                  🚫 Spray withholding: {arrivalWarning.spray.product} —
+                  {' '}{arrivalWarning.spray.days_remaining} day{arrivalWarning.spray.days_remaining === 1 ? '' : 's'} remaining
+                  (safe re-entry {new Date(arrivalWarning.spray.safe_reentry_date).toLocaleDateString('en-NZ')})
+                </div>
+              )}
+              {arrivalWarning.hazards?.map((h, i) => (
+                <div key={i} style={{ fontSize: '0.88rem', marginTop: 2 }}>
+                  {h.type === 'powerline' ? '⚡' : h.type === 'steep_terrain' ? '⛰' : '⚠'}{' '}
+                  {h.title} <span style={{ opacity: 0.85 }}>({h.severity})</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setArrivalWarning(null)}
+              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
+                padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
 
         {/* Top-left controls */}
         <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
@@ -401,6 +471,25 @@ export default function Dashboard() {
                   />
                 )}
 
+                {/* Hazard markers — small icons offset around the orchard pin */}
+                {!editPins && hazardsByGrower.get(g.id)?.map((h, hi) => {
+                  // Offset each hazard a few metres around the orchard centre so they don't stack
+                  const offset = 0.0003 * (hi + 1);
+                  const angle = (hi * 137) * Math.PI / 180; // golden angle for nice spread
+                  const hlat = (h.lat ?? g.lat) + Math.cos(angle) * offset;
+                  const hlng = (h.lng ?? g.lng) + Math.sin(angle) * offset;
+                  return (
+                    <Marker
+                      key={`h-${h.id}`}
+                      position={{ lat: hlat, lng: hlng }}
+                      icon={hazardIcon(h.type)}
+                      title={`${h.title} (${h.severity})`}
+                      onClick={() => setSelectedGrower(g)}
+                      zIndex={150}
+                    />
+                  );
+                })}
+
                 {editPins && (
                   <Marker
                     position={{ lat: g.lat, lng: g.lng }}
@@ -447,6 +536,23 @@ export default function Dashboard() {
                     </span>
                   )}
                 </div>
+                {hazardsByGrower.get(selectedGrower.id)?.length > 0 && (
+                  <div style={{ marginTop: 6, padding: '5px 7px', background: '#fdf4e3',
+                    border: '1px solid #f5c97c', borderRadius: 5 }}>
+                    <div style={{ fontWeight: 700, color: '#8a5a00', fontSize: '0.78rem', marginBottom: 3 }}>
+                      ⚠ Active hazards
+                    </div>
+                    {hazardsByGrower.get(selectedGrower.id).map(h => (
+                      <div key={h.id} style={{ fontSize: '0.78rem', color: '#5a4400' }}>
+                        {h.type === 'powerline' ? '⚡' : h.type === 'steep_terrain' ? '⛰' : '⚠'}{' '}
+                        {h.title}
+                        <span style={{ marginLeft: 5, fontSize: '0.7rem', color: '#a07a00' }}>
+                          ({h.severity})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {pickingMap.get(selectedGrower.id) && (() => {
                   const p = pickingMap.get(selectedGrower.id);
                   const statusLabel = { pending: 'Not Started', first_pick: 'First Pick ✓', complete: 'Complete ✓✓' };
