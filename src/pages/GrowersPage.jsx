@@ -184,6 +184,7 @@ function GrowerForm({ grower, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name:    grower?.name    ?? '',
     address: grower?.address ?? '',
+    billing_address: grower?.billing_address ?? '',
     phone:   grower?.phone   ?? '',
     email:   grower?.email   ?? '',
     hass_trees:  grower?.hass_trees  ?? '',
@@ -212,6 +213,7 @@ function GrowerForm({ grower, onSaved, onCancel }) {
         bank_account_name:   form.bank_account_name.trim()   || null,
         bank_account_number: form.bank_account_number.trim() || null,
         gst_number:          form.gst_number.trim()          || null,
+        billing_address:     form.billing_address.trim()     || null,
       };
       const res = await fetch(
         isEdit ? `/api/growers/${grower.id}` : '/api/growers',
@@ -235,15 +237,24 @@ function GrowerForm({ grower, onSaved, onCancel }) {
       </div>
       <form onSubmit={handleSubmit}>
 
-        {/* Row 1: Name + Address */}
+        {/* Row 1: Name + Orchard Address */}
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
           <Field label="Grower Name *" style={{ flex: '2 1 200px' }}>
             <input style={INPUT} type="text" value={form.name} onChange={e => set('name', e.target.value)}
               placeholder="e.g. Hugh Clark" required />
           </Field>
-          <Field label="Address *" style={{ flex: '3 1 260px' }}>
+          <Field label="Orchard Address *" style={{ flex: '3 1 260px' }}>
             <input style={INPUT} type="text" value={form.address} onChange={e => set('address', e.target.value)}
-              placeholder="e.g. 12 Orchard Rd, Te Puna" required />
+              placeholder="e.g. 313A Pahoia Road" required />
+          </Field>
+        </div>
+
+        {/* Optional separate billing address */}
+        <div style={{ marginBottom: '0.6rem' }}>
+          <Field label="Billing Address (leave blank if same as orchard address)">
+            <input style={INPUT} type="text" value={form.billing_address}
+              onChange={e => set('billing_address', e.target.value)}
+              placeholder="e.g. 25 Queen St, Auckland — for AvoGrade invoicing" />
           </Field>
         </div>
 
