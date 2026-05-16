@@ -198,6 +198,21 @@ function GrowerForm({ grower, onSaved, onCancel }) {
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })); }
 
+  async function handleRegeocode() {
+    if (!isEdit) return;
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`/api/growers/${grower.id}?regeocode=true`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: form.address.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Re-locate failed'); setSaving(false); return; }
+      onSaved();
+    } catch (err) { setError(err.message); setSaving(false); }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.address.trim()) return;
@@ -319,10 +334,16 @@ function GrowerForm({ grower, onSaved, onCancel }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" type="submit" disabled={saving || !form.name.trim() || !form.address.trim()}>
             {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Add Grower')}
           </button>
+          {isEdit && (
+            <button type="button" className="btn btn-secondary" onClick={handleRegeocode} disabled={saving}
+              title="Re-fetch the map pin and orchard boundary for the current address">
+              📍 Re-locate from address
+            </button>
+          )}
           {isEdit && onCancel && (
             <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
           )}
