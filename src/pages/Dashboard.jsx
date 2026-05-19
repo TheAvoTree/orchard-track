@@ -185,14 +185,28 @@ export default function Dashboard() {
     }
   }, [refetchGrowers]);
 
+  const handleHazardDrop = useCallback(async (hazardId, e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    try {
+      await fetch(`/api/safety/hazards/${hazardId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng }),
+      });
+    } catch {
+      alert('Failed to save hazard position.');
+    }
+  }, []);
+
   if (!isLoaded) return <div className="state-loading">Loading map…</div>;
 
   const ringToPath = ring => ring.map(([lng, lat]) => ({ lat, lng }));
 
   // Emoji-based SVG icons for hazard markers
   const hazardIcon = (type) => {
-    const emoji = type === 'powerline' ? '⚡' : type === 'steep_terrain' ? '⛰' : '⚠';
-    const bg    = type === 'powerline' ? '#f1c40f' : type === 'steep_terrain' ? '#e67e22' : '#c0392b';
+    const emoji = type === 'powerline' ? '⚡' : type === 'steep_terrain' ? '🏔' : '⚠';
+    const bg    = type === 'powerline' ? '#f1c40f' : type === 'steep_terrain' ? '#a0522d' : '#c0392b';
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='38' viewBox='0 0 32 38'>
       <path d='M16 38 L4 18 a12 12 0 1 1 24 0 Z' fill='${bg}' stroke='#fff' stroke-width='2'/>
       <text x='16' y='20' text-anchor='middle' font-size='18' font-family='Apple Color Emoji, Segoe UI Emoji, sans-serif'>${emoji}</text>
@@ -492,20 +506,25 @@ export default function Dashboard() {
                   />
                 )}
 
-                {/* Hazard markers — only when toggled on and zoomed in */}
-                {!editPins && hazardsVisible && hazardsByGrower.get(g.id)?.map((h, hi) => {
-                  // Offset each hazard a few metres around the orchard centre so they don't stack
+                {/* Hazard markers — shown when toggled on AND (zoomed in OR editing pins) */}
+                {(hazardsVisible || editPins) && hazardsByGrower.get(g.id)?.map((h, hi) => {
+                  // Use stored lat/lng if set; otherwise fan out around the orchard centre
+                  const hasCoord = h.lat != null && h.lng != null;
                   const offset = 0.0003 * (hi + 1);
-                  const angle = (hi * 137) * Math.PI / 180; // golden angle for nice spread
-                  const hlat = (h.lat ?? g.lat) + Math.cos(angle) * offset;
-                  const hlng = (h.lng ?? g.lng) + Math.sin(angle) * offset;
+                  const angle = (hi * 137) * Math.PI / 180;
+                  const hlat = hasCoord ? h.lat : g.lat + Math.cos(angle) * offset;
+                  const hlng = hasCoord ? h.lng : g.lng + Math.sin(angle) * offset;
                   return (
                     <Marker
                       key={`h-${h.id}`}
                       position={{ lat: hlat, lng: hlng }}
                       icon={hazardIcon(h.type)}
-                      title={`${h.title} (${h.severity})`}
-                      onClick={() => setSelectedGrower(g)}
+                      title={editPins
+                        ? `${h.title} — drag to reposition`
+                        : `${h.title} (${h.severity})`}
+                      draggable={editPins}
+                      onDragEnd={e => handleHazardDrop(h.id, e)}
+                      onClick={() => !editPins && setSelectedGrower(g)}
                       zIndex={150}
                     />
                   );
