@@ -70,6 +70,12 @@ export default function Dashboard() {
     return () => socket.disconnect();
   }, []);
 
+  // Hazard marker visibility
+  const HAZARD_ZOOM_THRESHOLD = 14;  // ~property-level
+  const [mapZoom, setMapZoom] = useState(11);
+  const [showHazards, setShowHazards] = useState(true);
+  const hazardsVisible = showHazards && mapZoom >= HAZARD_ZOOM_THRESHOLD;
+
   const radius = Number(settings?.geofence_radius_metres) || 200;
 
   const [selectedVehicle, setSelectedVehicle] = useState(null);
@@ -183,16 +189,20 @@ export default function Dashboard() {
 
   const ringToPath = ring => ring.map(([lng, lat]) => ({ lat, lng }));
 
-  // Icon for hazard markers on the map
-  const hazardIcon = (type) => ({
-    path: 'M12 2 L22 20 L2 20 Z',  // triangle
-    fillColor: type === 'powerline' ? '#f1c40f' : '#e67e22',
-    fillOpacity: 1,
-    strokeColor: '#fff',
-    strokeWeight: 1.5,
-    scale: 1.2,
-    anchor: new window.google.maps.Point(12, 20),
-  });
+  // Emoji-based SVG icons for hazard markers
+  const hazardIcon = (type) => {
+    const emoji = type === 'powerline' ? '⚡' : type === 'steep_terrain' ? '⛰' : '⚠';
+    const bg    = type === 'powerline' ? '#f1c40f' : type === 'steep_terrain' ? '#e67e22' : '#c0392b';
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='38' viewBox='0 0 32 38'>
+      <path d='M16 38 L4 18 a12 12 0 1 1 24 0 Z' fill='${bg}' stroke='#fff' stroke-width='2'/>
+      <text x='16' y='20' text-anchor='middle' font-size='18' font-family='Apple Color Emoji, Segoe UI Emoji, sans-serif'>${emoji}</text>
+    </svg>`;
+    return {
+      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+      scaledSize: new window.google.maps.Size(32, 38),
+      anchor: new window.google.maps.Point(16, 38),
+    };
+  };
 
   return (
     <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 56px)' }}>
@@ -250,6 +260,16 @@ export default function Dashboard() {
               style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)', position: 'relative', whiteSpace: 'nowrap' }}
             >
               ⚙ Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            </button>
+            <button
+              className={`btn ${showHazards ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowHazards(v => !v)}
+              title={showHazards
+                ? (mapZoom >= HAZARD_ZOOM_THRESHOLD ? 'Hazards visible — click to hide' : 'Zoom in to see hazard markers')
+                : 'Hazards hidden — click to show'}
+              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}
+            >
+              ⚠ Hazards{showHazards ? ' on' : ' off'}
             </button>
           </div>
 
@@ -418,7 +438,8 @@ export default function Dashboard() {
           center={MAP_CENTER}
           zoom={11}
           options={MAP_OPTIONS}
-          onLoad={map => { mapRef.current = map; }}
+          onLoad={map => { mapRef.current = map; setMapZoom(map.getZoom()); }}
+          onZoomChanged={() => mapRef.current && setMapZoom(mapRef.current.getZoom())}
         >
           {filteredGrowers.map(g => {
             const boundary = g.boundary
@@ -471,8 +492,8 @@ export default function Dashboard() {
                   />
                 )}
 
-                {/* Hazard markers — small icons offset around the orchard pin */}
-                {!editPins && hazardsByGrower.get(g.id)?.map((h, hi) => {
+                {/* Hazard markers — only when toggled on and zoomed in */}
+                {!editPins && hazardsVisible && hazardsByGrower.get(g.id)?.map((h, hi) => {
                   // Offset each hazard a few metres around the orchard centre so they don't stack
                   const offset = 0.0003 * (hi + 1);
                   const angle = (hi * 137) * Math.PI / 180; // golden angle for nice spread
