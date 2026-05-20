@@ -48,7 +48,7 @@ export default function Dashboard() {
   const { data: events } = useApi('/api/events?limit=10');
   const { data: locations } = useApi('/api/locations');
   const { data: pickingPlan } = useApi('/api/picking-plan?season=2026%2F27');
-  const { data: activeHazards } = useApi('/api/safety/hazards?status=active');
+  const { data: activeHazards, refetch: refetchHazards } = useApi('/api/safety/hazards?status=active');
   const { settings } = useSettings();
 
   // Group active hazards by grower_id for quick lookup
@@ -189,15 +189,18 @@ export default function Dashboard() {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
     try {
-      await fetch(`/api/safety/hazards/${hazardId}`, {
+      const res = await fetch(`/api/safety/hazards/${hazardId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng }),
       });
-    } catch {
-      alert('Failed to save hazard position.');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      refetchHazards();
+    } catch (err) {
+      alert(`Failed to save hazard position: ${err.message}`);
+      refetchHazards(); // snap back on error
     }
-  }, []);
+  }, [refetchHazards]);
 
   if (!isLoaded) return <div className="state-loading">Loading map…</div>;
 
