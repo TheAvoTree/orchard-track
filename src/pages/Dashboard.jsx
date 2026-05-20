@@ -76,6 +76,82 @@ export default function Dashboard() {
   const [showHazards, setShowHazards] = useState(true);
   const hazardsVisible = showHazards && mapZoom >= HAZARD_ZOOM_THRESHOLD;
 
+  // Add-hazard mode: click anywhere on the map to drop a new hazard
+  const [addHazardMode, setAddHazardMode] = useState(false);
+  const [newHazardDraft, setNewHazardDraft] = useState(null); // { lat, lng, grower }
+
+  // Ray-casting point-in-polygon to find which orchard a click belongs to
+  function pointInRing(ring, lng, lat) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+  function growerAtPoint(lat, lng) {
+    if (!growers) return null;
+    for (const g of growers) {
+      if (!g.boundary) continue;
+      const b = typeof g.boundary === 'string' ? JSON.parse(g.boundary) : g.boundary;
+      const polys = b.type === 'Polygon' ? [b.coordinates] : b.coordinates;
+      for (const rings of polys) if (pointInRing(rings[0], lng, lat)) return g;
+    }
+    // Fallback: nearest grower within ~200m
+    let best = null, bestD = Infinity;
+    for (const g of growers) {
+      if (!g.lat || !g.lng) continue;
+      const dLat = (g.lat - lat) * 111000;
+      const dLng = (g.lng - lng) * 111000 * Math.cos(lat * Math.PI / 180);
+      const d = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (d < bestD && d < 200) { best = g; bestD = d; }
+    }
+    return best;
+  }
+
+  function handleMapClick(e) {
+    if (!addHazardMode) return;
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    const grower = growerAtPoint(lat, lng);
+    if (!grower) {
+      alert('Click inside an orchard boundary (or within 200m of an orchard pin) to add a hazard.');
+      return;
+    }
+    setNewHazardDraft({
+      lat, lng, grower_id: grower.id, grower_name: grower.name,
+      type: 'steep_drop', title: '', severity: 'high',
+    });
+  }
+
+  async function saveNewHazard() {
+    if (!newHazardDraft?.title.trim()) return;
+    try {
+      const res = await fetch('/api/safety/hazards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grower_id: newHazardDraft.grower_id,
+          type: newHazardDraft.type,
+          title: newHazardDraft.title.trim(),
+          severity: newHazardDraft.severity,
+          lat: newHazardDraft.lat,
+          lng: newHazardDraft.lng,
+          reported_by: 'live-map',
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setNewHazardDraft(null);
+      setAddHazardMode(false);
+      refetchHazards();
+    } catch (err) {
+      alert(`Failed to add hazard: ${err.message}`);
+    }
+  }
+
   const radius = Number(settings?.geofence_radius_metres) || 200;
 
   const [selectedVehicle, setSelectedVehicle] = useState(null);
@@ -207,9 +283,29 @@ export default function Dashboard() {
   const ringToPath = ring => ring.map(([lng, lat]) => ({ lat, lng }));
 
   // Emoji-based SVG icons for hazard markers
+  const HAZARD_EMOJI = {
+    powerline: '⚡',
+    steep_terrain: '🏔',
+    steep_drop: '🧱',
+    chemical_storage: '☣',
+    bee_hive: '🐝',
+    water_hazard: '💧',
+    machinery: '⚙',
+    other: '⚠',
+  };
+  const HAZARD_BG = {
+    powerline: '#f1c40f',
+    steep_terrain: '#a0522d',
+    steep_drop: '#7b2d2d',
+    chemical_storage: '#8e44ad',
+    bee_hive: '#e67e22',
+    water_hazard: '#3498db',
+    machinery: '#7f8c8d',
+    other: '#c0392b',
+  };
   const hazardIcon = (type) => {
-    const emoji = type === 'powerline' ? '⚡' : type === 'steep_terrain' ? '🏔' : '⚠';
-    const bg    = type === 'powerline' ? '#f1c40f' : type === 'steep_terrain' ? '#a0522d' : '#c0392b';
+    const emoji = HAZARD_EMOJI[type] ?? '⚠';
+    const bg    = HAZARD_BG[type] ?? '#c0392b';
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='38' viewBox='0 0 32 38'>
       <path d='M16 38 L4 18 a12 12 0 1 1 24 0 Z' fill='${bg}' stroke='#fff' stroke-width='2'/>
       <text x='16' y='20' text-anchor='middle' font-size='18' font-family='Apple Color Emoji, Segoe UI Emoji, sans-serif'>${emoji}</text>
@@ -288,7 +384,67 @@ export default function Dashboard() {
             >
               ⚠ Hazards{showHazards ? ' on' : ' off'}
             </button>
+            <button
+              className={`btn ${addHazardMode ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => { setAddHazardMode(v => !v); setNewHazardDraft(null); }}
+              title="Click on the map to drop a hazard at a specific location"
+              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}
+            >
+              {addHazardMode ? '✕ Cancel' : '+ Add Hazard'}
+            </button>
           </div>
+          {addHazardMode && !newHazardDraft && (
+            <div style={{ background: '#fff', padding: '0.5rem 0.7rem', borderRadius: 6,
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)', fontSize: '0.85rem', maxWidth: 260 }}>
+              Click on the map (inside an orchard boundary) to place a hazard.
+            </div>
+          )}
+          {newHazardDraft && (
+            <div style={{ background: '#fff', padding: '0.7rem 0.8rem', borderRadius: 8,
+              boxShadow: '0 2px 10px rgba(0,0,0,0.25)', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                New hazard at {newHazardDraft.grower_name}
+              </div>
+              <label style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>
+                Type
+                <select value={newHazardDraft.type}
+                  onChange={e => setNewHazardDraft(d => ({ ...d, type: e.target.value }))}
+                  style={{ width: '100%', padding: '4px 6px', marginTop: 2, borderRadius: 4, border: '1px solid #ccc' }}>
+                  <option value="steep_drop">🧱 Steep Drop / Retaining Wall / Cliff</option>
+                  <option value="powerline">⚡ Powerline</option>
+                  <option value="steep_terrain">🏔 Steep Terrain</option>
+                  <option value="water_hazard">💧 Water Hazard</option>
+                  <option value="chemical_storage">☣ Chemical Storage</option>
+                  <option value="bee_hive">🐝 Bee Hive</option>
+                  <option value="machinery">⚙ Machinery</option>
+                  <option value="other">⚠ Other</option>
+                </select>
+              </label>
+              <label style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>
+                Description
+                <input type="text" autoFocus value={newHazardDraft.title}
+                  onChange={e => setNewHazardDraft(d => ({ ...d, title: e.target.value }))}
+                  placeholder="e.g. 3m retaining wall along southern edge"
+                  style={{ width: '100%', padding: '4px 6px', marginTop: 2, borderRadius: 4, border: '1px solid #ccc' }} />
+              </label>
+              <label style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>
+                Severity
+                <select value={newHazardDraft.severity}
+                  onChange={e => setNewHazardDraft(d => ({ ...d, severity: e.target.value }))}
+                  style={{ width: '100%', padding: '4px 6px', marginTop: 2, borderRadius: 4, border: '1px solid #ccc' }}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                <button className="btn btn-primary" onClick={saveNewHazard}
+                  disabled={!newHazardDraft.title.trim()}>Save</button>
+                <button className="btn btn-secondary" onClick={() => setNewHazardDraft(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
 
           {/* Map grower search */}
           <div style={{ position: 'relative', width: 260 }}>
@@ -457,6 +613,7 @@ export default function Dashboard() {
           options={MAP_OPTIONS}
           onLoad={map => { mapRef.current = map; setMapZoom(map.getZoom()); }}
           onZoomChanged={() => mapRef.current && setMapZoom(mapRef.current.getZoom())}
+          onClick={handleMapClick}
         >
           {filteredGrowers.map(g => {
             const boundary = g.boundary

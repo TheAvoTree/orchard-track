@@ -3,7 +3,8 @@ import { useApi } from '../hooks/useApi.js';
 
 const HAZARD_ICONS = {
   powerline:        '⚡',
-  steep_terrain:    '⛰',
+  steep_terrain:    '🏔',
+  steep_drop:       '🧱',
   chemical_storage: '☣',
   bee_hive:         '🐝',
   water_hazard:     '💧',
@@ -12,6 +13,7 @@ const HAZARD_ICONS = {
 };
 const HAZARD_LABELS = {
   powerline: 'Powerlines', steep_terrain: 'Steep Terrain',
+  steep_drop: 'Steep Drop / Retaining Wall / Cliff',
   chemical_storage: 'Chemical Storage', bee_hive: 'Bee Hive',
   water_hazard: 'Water Hazard', machinery: 'Machinery', other: 'Other',
 };
