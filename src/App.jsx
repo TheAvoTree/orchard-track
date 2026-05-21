@@ -6,6 +6,7 @@ import EventsPage from './pages/EventsPage.jsx';
 import PickingPlanPage from './pages/PickingPlanPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import SafetyPage from './pages/SafetyPage.jsx';
+import PickingLogPage from './pages/PickingLogPage.jsx';
 import GrowerPortal from './pages/GrowerPortal.jsx';
 import './App.css';
 
@@ -15,6 +16,7 @@ const portalMatch = window.location.pathname.match(/^\/safety\/([a-f0-9]{32})$/i
 const TABS = [
   { id: 'dashboard',    label: 'Live Map' },
   { id: 'picking-plan', label: 'Picking Plan' },
+  { id: 'picking-log',  label: '🥑 Picking Log' },
   { id: 'safety',       label: '⚠ Safety' },
   { id: 'events',       label: 'Events' },
   { id: 'growers',      label: 'Growers' },
@@ -58,6 +60,7 @@ export default function App() {
       <main className="app-main">
         {tab === 'dashboard'    && <Dashboard />}
         {tab === 'picking-plan' && <PickingPlanPage />}
+        {tab === 'picking-log'  && <PickingLogPage />}
         {tab === 'safety'       && <SafetyPage />}
         {tab === 'events'       && <EventsPage />}
         {tab === 'growers'      && <GrowersPage />}
