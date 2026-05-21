@@ -347,16 +347,20 @@ export default function PickingLogPage() {
 
   const monthStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
 
-  const { data: workers, refetch: refetchWorkers } = useApi('/api/picking-logs/workers');
-  const { data: growers } = useApi('/api/growers');
+  const { data: workers, refetch: refetchWorkers } = useApi(`${BACKEND}/api/picking-logs/workers`);
+  const { data: growers } = useApi(`${BACKEND}/api/growers`);
 
   // Logs for the viewed month (filtered by worker unless admin view)
-  const logsUrl = `/api/picking-logs?month=${monthStr}${!adminView ? `&worker_id=${worker?.id}` : ''}`;
-  const { data: monthLogs, refetch: refetchLogs } = useApi(worker ? logsUrl : null);
+  const logsUrl = worker
+    ? `${BACKEND}/api/picking-logs?month=${monthStr}${!adminView ? `&worker_id=${worker.id}` : ''}`
+    : null;
+  const { data: monthLogs, refetch: refetchLogs } = useApi(logsUrl);
 
   // Summary for the month
-  const summaryUrl = `/api/picking-logs/summary?month=${monthStr}${!adminView && worker ? `&worker_id=${worker.id}` : ''}`;
-  const { data: summary, refetch: refetchSummary } = useApi(worker ? summaryUrl : null);
+  const summaryUrl = worker
+    ? `${BACKEND}/api/picking-logs/summary?month=${monthStr}${!adminView ? `&worker_id=${worker.id}` : ''}`
+    : null;
+  const { data: summary, refetch: refetchSummary } = useApi(summaryUrl);
 
   // Logs for the selected day
   const dayLogs = useMemo(() => {

@@ -6,6 +6,7 @@ export function useApi(url, deps = []) {
   const [error, setError] = useState(null);
 
   const fetch_ = useCallback(async () => {
+    if (!url) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {

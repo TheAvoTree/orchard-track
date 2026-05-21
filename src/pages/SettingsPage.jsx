@@ -386,7 +386,7 @@ export default function SettingsPage() {
 // ── Picking Log Workers card ──────────────────────────────────────────────────
 
 function WorkersCard() {
-  const { data: workers, refetch } = useApi('/api/picking-logs/workers');
+  const { data: workers, refetch } = useApi(`${BACKEND}/api/picking-logs/workers`);
   const [form, setForm] = useState({ name: '', pin: '', role: 'picker' });
   const [editId, setEditId] = useState(null);
   const [editPin, setEditPin] = useState('');
