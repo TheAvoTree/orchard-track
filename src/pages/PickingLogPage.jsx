@@ -393,46 +393,6 @@ export default function PickingLogPage() {
     else setViewMonth(m => m + 1);
   }
 
-  // ── Workers Admin panel ────────────────────────────────────────────────────
-  const [showWorkerAdmin, setShowWorkerAdmin] = useState(false);
-  const [newWorker, setNewWorker] = useState({ name: '', pin: '', role: 'picker' });
-  const [savingWorker, setSavingWorker] = useState(false);
-  const [workerError, setWorkerError] = useState('');
-
-  async function createWorker(e) {
-    e.preventDefault();
-    if (!newWorker.name.trim() || !newWorker.pin.trim()) {
-      setWorkerError('Name and PIN are required.'); return;
-    }
-    setSavingWorker(true); setWorkerError('');
-    try {
-      const res = await fetch(`${BACKEND}/api/picking-logs/workers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newWorker),
-      });
-      const data = await res.json();
-      if (!res.ok) { setWorkerError(data.error || 'Failed'); return; }
-      setNewWorker({ name: '', pin: '', role: 'picker' });
-      refetchWorkers();
-    } catch { setWorkerError('Server error.'); }
-    finally { setSavingWorker(false); }
-  }
-
-  async function toggleWorkerActive(w) {
-    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !w.active }),
-    });
-    refetchWorkers();
-  }
-
-  async function deleteWorker(w) {
-    if (!confirm(`Delete ${w.name}? This will also delete all their picking logs.`)) return;
-    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, { method: 'DELETE' });
-    refetchWorkers();
-  }
 
   // ── Not logged in ─────────────────────────────────────────────────────────
   if (!worker) {
@@ -470,95 +430,12 @@ export default function PickingLogPage() {
               {adminView ? '👥 All Workers' : '👤 My Logs'}
             </button>
           )}
-          {isAdmin && (
-            <button className="btn btn-secondary"
-              onClick={() => setShowWorkerAdmin(v => !v)}
-              style={{ fontSize: '0.82rem' }}>
-              ⚙ Workers
-            </button>
-          )}
           <button className="btn btn-secondary" onClick={logout} style={{ fontSize: '0.82rem' }}>
             Sign Out
           </button>
         </div>
       </div>
 
-      {/* Worker admin panel */}
-      {showWorkerAdmin && isAdmin && (
-        <div style={{ background: '#f9fcf9', borderBottom: '1px solid #d4e0d4',
-          padding: '1rem 1.5rem' }}>
-          <div style={{ fontWeight: 700, color: '#11420A', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
-            Manage Workers
-          </div>
-          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-            {/* Existing workers */}
-            <div style={{ flex: 2, minWidth: 280 }}>
-              <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #eef2ee' }}>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', color: '#5a6a5a', fontWeight: 600 }}>Name</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', color: '#5a6a5a', fontWeight: 600 }}>Role</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', color: '#5a6a5a', fontWeight: 600 }}>Status</th>
-                    <th style={{ padding: '4px 8px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workers?.map(w => (
-                    <tr key={w.id} style={{ borderBottom: '1px solid #f0f4f0' }}>
-                      <td style={{ padding: '5px 8px', fontWeight: 600, color: '#11420A' }}>{w.name}</td>
-                      <td style={{ padding: '5px 8px', color: '#5a6a5a' }}>{w.role}</td>
-                      <td style={{ padding: '5px 8px' }}>
-                        <span style={{ background: w.active ? '#e8f5e8' : '#f5e8e8',
-                          color: w.active ? '#2d6a1f' : '#c0392b',
-                          borderRadius: 4, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600 }}>
-                          {w.active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '5px 8px', display: 'flex', gap: 4 }}>
-                        <button onClick={() => toggleWorkerActive(w)}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
-                          {w.active ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button onClick={() => deleteWorker(w)}
-                          style={{ background: 'none', border: 'none', color: '#e74c3c',
-                            cursor: 'pointer', fontSize: '0.85rem', padding: '3px 6px' }}>
-                          🗑
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* Add worker form */}
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#3a4a3a', marginBottom: 8 }}>
-                Add Worker
-              </div>
-              <form onSubmit={createWorker} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <input type="text" placeholder="Full name" value={newWorker.name}
-                  onChange={e => setNewWorker(p => ({ ...p, name: e.target.value }))}
-                  style={{ padding: '0.45rem 0.6rem', borderRadius: 7, border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }} />
-                <input type="text" inputMode="numeric" placeholder="PIN (numbers)" value={newWorker.pin}
-                  onChange={e => setNewWorker(p => ({ ...p, pin: e.target.value }))}
-                  style={{ padding: '0.45rem 0.6rem', borderRadius: 7, border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }} />
-                <select value={newWorker.role}
-                  onChange={e => setNewWorker(p => ({ ...p, role: e.target.value }))}
-                  style={{ padding: '0.45rem 0.6rem', borderRadius: 7, border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }}>
-                  <option value="picker">Picker</option>
-                  <option value="admin">Admin</option>
-                </select>
-                {workerError && <div style={{ color: '#c0392b', fontSize: '0.8rem' }}>{workerError}</div>}
-                <button type="submit" className="btn btn-primary" disabled={savingWorker}
-                  style={{ fontSize: '0.85rem' }}>
-                  {savingWorker ? 'Adding…' : '+ Add Worker'}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Main content: calendar + sidebar */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

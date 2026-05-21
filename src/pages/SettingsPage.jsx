@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSettings } from '../hooks/useSettings.js';
 import { useApi } from '../hooks/useApi.js';
 
+const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
+
 export default function SettingsPage() {
   const { settings, saveSettings } = useSettings();
   const [radius, setRadius] = useState(200);
@@ -303,6 +305,9 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* Picking Log Workers */}
+      <WorkersCard />
+
       {/* Email Notifications */}
       <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
@@ -373,6 +378,206 @@ export default function SettingsPage() {
           {testResult?.error && <span style={{ color: '#c0392b', fontSize: '0.85rem' }}>{testResult.error}</span>}
           {testResult?.skipped && <span style={{ color: '#856404', fontSize: '0.85rem' }}>Skipped: {testResult.skipped}</span>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Picking Log Workers card ──────────────────────────────────────────────────
+
+function WorkersCard() {
+  const { data: workers, refetch } = useApi('/api/picking-logs/workers');
+  const [form, setForm] = useState({ name: '', pin: '', role: 'picker' });
+  const [editId, setEditId] = useState(null);
+  const [editPin, setEditPin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  async function createWorker(e) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.pin.trim()) { setError('Name and PIN are required.'); return; }
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`${BACKEND}/api/picking-logs/workers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to create worker.'); return; }
+      setForm({ name: '', pin: '', role: 'picker' });
+      refetch();
+    } catch { setError('Server error — try again.'); }
+    finally { setSaving(false); }
+  }
+
+  async function savePin(w) {
+    if (!editPin.trim()) return;
+    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: editPin.trim() }),
+    });
+    setEditId(null); setEditPin('');
+    refetch();
+  }
+
+  async function toggleActive(w) {
+    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !w.active }),
+    });
+    refetch();
+  }
+
+  async function changeRole(w, role) {
+    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    refetch();
+  }
+
+  async function deleteWorker(w) {
+    if (!confirm(`Delete ${w.name}? This will permanently remove all their picking logs.`)) return;
+    await fetch(`${BACKEND}/api/picking-logs/workers/${w.id}`, { method: 'DELETE' });
+    refetch();
+  }
+
+  return (
+    <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+        Picking Log — Workers
+      </h2>
+      <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+        Add pickers here so they can sign into the Picking Log tab with their name and PIN.
+        Set role to <strong>Admin</strong> to allow viewing all workers' logs and managing this list.
+      </p>
+
+      {/* Existing workers */}
+      {workers?.length > 0 && (
+        <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {workers.map(w => (
+            <div key={w.id} style={{
+              padding: '0.6rem 0.85rem', borderRadius: 8,
+              background: w.active ? '#f7fbf7' : '#fafafa',
+              border: `1.5px solid ${w.active ? '#d4e0d4' : '#e8e8e8'}`,
+              display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+            }}>
+              {/* Avatar */}
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                background: w.active ? '#2d6a1f' : '#bbb',
+                color: '#fff', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem',
+              }}>
+                {w.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+
+              {/* Name + role */}
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ fontWeight: 600, color: '#11420A', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {w.name}
+                  {!w.active && <span style={{ fontSize: '0.72rem', color: '#999', fontWeight: 400 }}>(inactive)</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                  <select value={w.role} onChange={e => changeRole(w, e.target.value)}
+                    style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: 4,
+                      border: '1px solid #d4e0d4', background: '#fff', color: '#3a4a3a',
+                      cursor: 'pointer' }}>
+                    <option value="picker">Picker</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* PIN reset inline */}
+              {editId === w.id ? (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <input type="text" inputMode="numeric" maxLength={8}
+                    value={editPin} onChange={e => setEditPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="New PIN"
+                    autoFocus
+                    style={{ width: 80, padding: '3px 6px', borderRadius: 6,
+                      border: '1.5px solid #2d6a1f', fontSize: '0.85rem', textAlign: 'center' }} />
+                  <button onClick={() => savePin(w)} className="btn btn-primary"
+                    style={{ fontSize: '0.75rem', padding: '3px 10px' }}>Save</button>
+                  <button onClick={() => { setEditId(null); setEditPin(''); }}
+                    style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+                </div>
+              ) : (
+                <button onClick={() => { setEditId(w.id); setEditPin(''); }}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.75rem', padding: '3px 10px', whiteSpace: 'nowrap' }}>
+                  Change PIN
+                </button>
+              )}
+
+              {/* Active toggle */}
+              <button onClick={() => toggleActive(w)}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '3px 10px', whiteSpace: 'nowrap',
+                  color: w.active ? '#c0392b' : '#2d6a1f' }}>
+                {w.active ? 'Deactivate' : 'Activate'}
+              </button>
+
+              {/* Delete */}
+              <button onClick={() => deleteWorker(w)}
+                style={{ background: 'none', border: 'none', color: '#ddd',
+                  cursor: 'pointer', fontSize: '1.1rem', padding: '0 2px',
+                  transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#e74c3c'}
+                onMouseLeave={e => e.currentTarget.style.color = '#ddd'}
+                title="Delete worker">🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add worker form */}
+      <div style={{ borderTop: workers?.length ? '1px solid #eef2ee' : 'none',
+        paddingTop: workers?.length ? '1rem' : 0 }}>
+        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#3a4a3a', marginBottom: '0.5rem' }}>
+          {workers?.length ? 'Add another worker' : 'Add your first worker'}
+        </div>
+        <form onSubmit={createWorker}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 2, minWidth: 130 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5a6a5a' }}>Full name</label>
+              <input type="text" value={form.name}
+                onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. Joe Bloggs"
+                style={{ padding: '0.42rem 0.6rem', borderRadius: 7,
+                  border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: 90 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5a6a5a' }}>PIN</label>
+              <input type="text" inputMode="numeric" maxLength={8} value={form.pin}
+                onChange={e => setForm(p => ({ ...p, pin: e.target.value.replace(/\D/g, '') }))}
+                placeholder="e.g. 1234"
+                style={{ padding: '0.42rem 0.6rem', borderRadius: 7,
+                  border: '1.5px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: 90 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5a6a5a' }}>Role</label>
+              <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
+                style={{ padding: '0.42rem 0.6rem', borderRadius: 7,
+                  border: '1.5px solid #d4e0d4', fontSize: '0.9rem', background: '#fff' }}>
+                <option value="picker">Picker</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={saving}
+              style={{ padding: '0.42rem 1rem', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>
+              {saving ? 'Adding…' : '+ Add'}
+            </button>
+          </div>
+          {error && (
+            <div style={{ marginTop: '0.5rem', color: '#c0392b', fontSize: '0.83rem' }}>{error}</div>
+          )}
+        </form>
       </div>
     </div>
   );
