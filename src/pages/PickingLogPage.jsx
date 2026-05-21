@@ -107,35 +107,23 @@ function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
   async function handleSave() {
     setSaving(true);
     try {
-      for (const key of selectedGrowers) {
-        const e = entries[key] || {};
-        const bins = Number(e.bins) || 0;
-        const existingId = e.id;
-        const growerId = key === 'none' ? null : Number(key);
+      // Build the full list of entries for this day and send in one request
+      const entriesToSave = selectedGrowers
+        .map(key => ({
+          grower_id: key === 'none' ? null : Number(key),
+          bins_picked: Number(entries[key]?.bins) || 0,
+          notes: entries[key]?.notes || null,
+        }))
+        .filter(e => e.bins_picked > 0);
 
-        if (bins === 0 && existingId) {
-          // Delete zeroed-out existing entry
-          const res = await fetch(`${BACKEND}/api/harvest/picks/${existingId}`, { method: 'DELETE' });
-          if (!res.ok) {
-            const d = await res.json().catch(() => ({}));
-            throw new Error(d.error || `Delete failed (${res.status})`);
-          }
-        } else if (bins > 0) {
-          const res = await fetch(`${BACKEND}/api/harvest/picks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              pick_date: date,
-              grower_id: growerId,
-              bins_picked: bins,
-              notes: e.notes || null,
-            }),
-          });
-          if (!res.ok) {
-            const d = await res.json().catch(() => ({}));
-            throw new Error(d.error || `Save failed (${res.status})`);
-          }
-        }
+      const res = await fetch(`${BACKEND}/api/harvest/picks/day`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pick_date: date, entries: entriesToSave }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Save failed (${res.status})`);
       }
       onSaved();
       onClose();
