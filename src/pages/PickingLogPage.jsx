@@ -115,9 +115,13 @@ function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
 
         if (bins === 0 && existingId) {
           // Delete zeroed-out existing entry
-          await fetch(`${BACKEND}/api/harvest/picks/${existingId}`, { method: 'DELETE' });
+          const res = await fetch(`${BACKEND}/api/harvest/picks/${existingId}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            throw new Error(d.error || `Delete failed (${res.status})`);
+          }
         } else if (bins > 0) {
-          await fetch(`${BACKEND}/api/harvest/picks`, {
+          const res = await fetch(`${BACKEND}/api/harvest/picks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -127,11 +131,15 @@ function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
               notes: e.notes || null,
             }),
           });
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            throw new Error(d.error || `Save failed (${res.status})`);
+          }
         }
       }
       onSaved();
       onClose();
-    } catch { alert('Failed to save — try again.'); }
+    } catch (err) { alert(`Failed to save: ${err.message}`); }
     finally { setSaving(false); }
   }
 
