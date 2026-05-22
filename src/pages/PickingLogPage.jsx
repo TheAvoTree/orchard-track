@@ -351,6 +351,90 @@ function OrderForm({ onSaved, editing, onCancel }) {
   );
 }
 
+// ── Grading log form ──────────────────────────────────────────────────────────
+
+function GradingForm({ growers, onSaved }) {
+  const [date,     setDate]     = useState(TODAY);
+  const [growerId, setGrowerId] = useState('');
+  const [bins,     setBins]     = useState('');
+  const [notes,    setNotes]    = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!date || !bins) return;
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`${BACKEND}/api/harvest/grading`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_date: date,
+          grower_id: growerId ? Number(growerId) : null,
+          bins_graded: Number(bins),
+          notes: notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error || `Server error (${res.status})`);
+        return;
+      }
+      setBins(''); setNotes('');
+      onSaved();
+    } catch (err) { setError('Connection error — try again.'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', alignItems:'flex-end' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4', fontSize:'0.9rem' }} />
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:120 }}>
+          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Grower</label>
+          <select value={growerId} onChange={e => setGrowerId(e.target.value)}
+            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4',
+              fontSize:'0.9rem', background:'#fff', color:'#11420A' }}>
+            <option value="">— Any grower —</option>
+            {(growers || []).map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Bins graded</label>
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <input type="number" min="0" step="0.5" value={bins} onChange={e => setBins(e.target.value)}
+              placeholder="0"
+              style={{ width:72, padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4',
+                fontSize:'0.9rem', textAlign:'center', fontWeight:700 }} />
+            <span style={{ fontSize:'0.8rem', color:'#5a6a5a' }}>bins</span>
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:100 }}>
+          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Notes</label>
+          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="optional"
+            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4', fontSize:'0.9rem' }} />
+        </div>
+        <button type="submit" disabled={saving || !bins || !date}
+          style={{ alignSelf:'flex-end', padding:'0.45rem 1rem', borderRadius:8,
+            background:'#16a085', color:'#fff', border:'none', cursor:'pointer',
+            fontWeight:700, fontSize:'0.88rem', whiteSpace:'nowrap',
+            opacity: (saving || !bins || !date) ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : '+ Log Grading'}
+        </button>
+      </div>
+      {error && <div style={{ marginTop:'0.4rem', color:'#c0392b', fontSize:'0.82rem' }}>{error}</div>}
+    </form>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PickingLogPage() {
@@ -370,8 +454,10 @@ export default function PickingLogPage() {
   const { data: orders, refetch: refetchOrders } =
     useApi(`${BACKEND}/api/harvest/orders?from=${addDays(TODAY, -7)}&to=${to60}`);
   const { data: growers } = useApi(`${BACKEND}/api/growers`);
+  const { data: gradings, refetch: refetchGradings } =
+    useApi(`${BACKEND}/api/harvest/grading?from=${from90}&to=${TODAY}`);
 
-  function refetchAll() { refetchSummary(); refetchPicks(); refetchOrders(); }
+  function refetchAll() { refetchSummary(); refetchPicks(); refetchOrders(); refetchGradings(); }
 
   // Group picks by date → array of entries
   const picksByDate = useMemo(() => {
@@ -398,6 +484,16 @@ export default function PickingLogPage() {
     return m;
   }, [orders]);
 
+  // Map of session_date → array of grading sessions (for calendar badges)
+  const gradingsByDate = useMemo(() => {
+    const m = {};
+    for (const g of (gradings || [])) {
+      if (!m[g.session_date]) m[g.session_date] = [];
+      m[g.session_date].push(g);
+    }
+    return m;
+  }, [gradings]);
+
   const selectedEntries = picksByDate[selectedDate] || [];
 
   async function toggleFulfilled(order) {
@@ -420,8 +516,10 @@ export default function PickingLogPage() {
   const binsInStorage    = Number(summary?.bins_in_storage    || 0); // < holdMin days — not packable yet
   const binsReadyToPack  = Number(summary?.bins_ready_to_pack || 0); // ≥ holdMin days — packable
   const binsTotalAvail   = Number(summary?.bins_total_available || 0); // all picked, not dispatched
-  const binsToday        = Number(summary?.bins_today         || 0);
-  const binsThisWeek     = Number(summary?.bins_this_week     || 0);
+  const binsToday           = Number(summary?.bins_today            || 0);
+  const binsThisWeek        = Number(summary?.bins_this_week        || 0);
+  const binsGraded          = Number(summary?.bins_graded           || 0);
+  const binsAwaitingGrading = Number(summary?.bins_awaiting_grading || 0);
   // Shortfall uses ALL available bins (in storage + ready) vs upcoming orders
   const stockShortfall   = upcomingBinsNeeded - binsTotalAvail;
   const nextOrder        = summary?.next_order;
@@ -474,6 +572,10 @@ export default function PickingLogPage() {
           sub={`Past ${holdMin}-day minimum hold`} color="#2980b9" />
         <StatCard label="Total Available" value={fmtNum(binsTotalAvail)} unit="bins"
           sub="In storage + ready to pack" color="#6c3483" />
+        <StatCard label="Graded" value={fmtNum(binsGraded)} unit="bins"
+          sub="Last 60 days" color="#16a085" />
+        <StatCard label="Awaiting Grading" value={fmtNum(binsAwaitingGrading)} unit="bins"
+          sub="Ready but not yet graded" color="#16a085" />
         <StatCard label="Upcoming Orders" value={fmtNum(upcomingBinsNeeded)} unit="bins"
           sub={upcomingOrders.length > 0 ? `${upcomingOrders.length} order${upcomingOrders.length !== 1 ? 's' : ''}` : 'No orders entered'}
           warn={stockShortfall > 0} color={stockShortfall > 0 ? '#c0392b' : '#2d6a1f'} />
@@ -521,6 +623,7 @@ export default function PickingLogPage() {
               <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#2d6a1f', marginRight:4 }} />Bins picked</span>
               <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#dbeafe', border:'1px solid #93c5fd', marginRight:4 }} />Order due</span>
               <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background:'#e67e22', marginRight:4 }} />In hold</span>
+              <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#16a085', marginRight:4 }} />Graded</span>
             </div>
 
             {/* Day-of-week headers */}
@@ -533,9 +636,10 @@ export default function PickingLogPage() {
 
             <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
               {calendarCells.map(d => {
-                const total  = dailyTotals[d] || 0;
-                const order  = ordersMap[d];
-                const isToday = d === TODAY;
+                const total    = dailyTotals[d] || 0;
+                const order    = ordersMap[d];
+                const hasGrading = !!(gradingsByDate[d]?.length);
+                const isToday  = d === TODAY;
                 const isSel   = d === selectedDate;
                 const isFuture = d > TODAY;
                 const isPast90 = d < from90;
@@ -568,6 +672,12 @@ export default function PickingLogPage() {
                       <span style={{ fontSize:'0.58rem', lineHeight:1,
                         color: isSel ? '#bde0ff' : '#2980b9', fontWeight:700 }}>
                         📦{fmtNum(order.bins_required)}
+                      </span>
+                    )}
+                    {hasGrading && (
+                      <span style={{ fontSize:'0.58rem', lineHeight:1,
+                        color: isSel ? '#a8f0e8' : '#16a085', fontWeight:700 }}>
+                        G
                       </span>
                     )}
                   </button>
@@ -715,6 +825,69 @@ export default function PickingLogPage() {
                 No orders entered yet. Add your first order above.
               </div>
             )}
+          </div>
+
+          {/* Grading log */}
+          <div className="card" style={{ padding:'1.25rem' }}>
+            <h2 style={{ fontSize:'0.95rem', fontWeight:700, color:'#11420A', margin:'0 0 0.75rem' }}>
+              🏷️ Grading Log
+            </h2>
+            <GradingForm growers={growers} onSaved={refetchAll} />
+
+            {/* Recent grading sessions */}
+            {(gradings || []).length > 0 && (
+              <div style={{ marginTop:'1rem', display:'flex', flexDirection:'column', gap:'0.35rem' }}>
+                {(gradings || []).slice(0, 10).map(g => (
+                  <div key={g.id} style={{
+                    display:'flex', alignItems:'center', gap:'0.6rem',
+                    padding:'0.5rem 0.75rem', borderRadius:8,
+                    background:'#f0faf8', border:'1px solid #c8e8e4',
+                  }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:6 }}>
+                        <span style={{ fontWeight:700, color:'#11420A', fontSize:'0.88rem' }}>
+                          {g.grower_name || 'All growers'}
+                        </span>
+                        <span style={{ fontSize:'0.77rem', color:'#5a6a5a', whiteSpace:'nowrap' }}>
+                          {fmtDate(g.session_date)}
+                        </span>
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:1 }}>
+                        <span style={{ fontWeight:800, color:'#16a085', fontSize:'0.95rem' }}>
+                          {fmtNum(g.bins_graded)}
+                          <span style={{ fontSize:'0.74rem', color:'#5a6a5a', marginLeft:3 }}>bins</span>
+                        </span>
+                        {g.notes && (
+                          <span style={{ fontSize:'0.74rem', color:'#888' }}>{g.notes}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Remove this grading session?')) return;
+                        await fetch(`${BACKEND}/api/harvest/grading/${g.id}`, { method: 'DELETE' });
+                        refetchAll();
+                      }}
+                      style={{ background:'none', border:'none', cursor:'pointer',
+                        color:'#ddd', fontSize:'0.9rem', padding:'0 3px', transition:'color 0.15s',
+                        flexShrink:0 }}
+                      onMouseEnter={e => e.currentTarget.style.color='#e74c3c'}
+                      onMouseLeave={e => e.currentTarget.style.color='#ddd'}>
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(gradings || []).length === 0 && (
+              <div style={{ marginTop:'0.75rem', color:'#aaa', fontSize:'0.85rem' }}>
+                No grading sessions logged yet.
+              </div>
+            )}
+
+            <div style={{ marginTop:'0.9rem', fontSize:'0.76rem', color:'#999', fontStyle:'italic' }}>
+              AvoGrade will post here automatically once connected to the server.
+            </div>
           </div>
 
           {/* Recent picks summary */}
