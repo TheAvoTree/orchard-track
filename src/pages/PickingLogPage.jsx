@@ -278,7 +278,7 @@ function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
 function OrderForm({ onSaved, editing, onCancel }) {
   const [date,     setDate]     = useState(editing?.dispatch_date?.slice(0,10) || addDays(TODAY, 14));
   const [bins,     setBins]     = useState(editing ? String(editing.bins_required) : '');
-  const [customer, setCustomer] = useState(editing?.customer || '');
+  const [customer, setCustomer] = useState(editing?.customer || 'Hass');
   const [notes,    setNotes]    = useState(editing?.notes || '');
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
@@ -327,9 +327,9 @@ function OrderForm({ onSaved, editing, onCancel }) {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 130 }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#3a4a3a' }}>Customer</label>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#3a4a3a' }}>Variety</label>
           <input type="text" value={customer} onChange={e => setCustomer(e.target.value)}
-            placeholder="e.g. NZ Avocados"
+            placeholder="e.g. Hass"
             style={{ padding: '0.42rem 0.6rem', borderRadius: 7, border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: 110 }}>
