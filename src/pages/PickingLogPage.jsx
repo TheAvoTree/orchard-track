@@ -353,13 +353,14 @@ export default function PickingLogPage() {
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [showPickModal, setShowPickModal] = useState(false);
   const [editingOrder, setEditingOrder]  = useState(null);
-  const [holdDays, setHoldDays] = useState(10);
+  const [holdMin, setHoldMin] = useState(7);
+  const [holdMax, setHoldMax] = useState(10);
 
   const from90 = addDays(TODAY, -90);
   const to60   = addDays(TODAY, 60);
 
   const { data: summary, refetch: refetchSummary } =
-    useApi(`${BACKEND}/api/harvest/summary?hold_days=${holdDays}`);
+    useApi(`${BACKEND}/api/harvest/summary?hold_min=${holdMin}&hold_max=${holdMax}`);
   const { data: picks, refetch: refetchPicks } =
     useApi(`${BACKEND}/api/harvest/picks?from=${from90}&to=${TODAY}`);
   const { data: orders, refetch: refetchOrders } =
@@ -411,15 +412,17 @@ export default function PickingLogPage() {
   }
 
   const upcomingOrders = (orders || []).filter(o => !o.fulfilled && o.date >= TODAY);
-  const upcomingBinsNeeded = upcomingOrders.reduce((s, o) => s + Number(o.bins_required), 0);
-  const binsReady      = Number(summary?.bins_ready   || 0);
-  const binsInHold     = Number(summary?.bins_in_hold || 0);
-  const binsToday      = Number(summary?.bins_today   || 0);
-  const binsThisWeek   = Number(summary?.bins_this_week || 0);
-  const stockShortfall = upcomingBinsNeeded - binsReady;
-  const nextOrder      = summary?.next_order;
-  const pickByDate     = nextOrder ? addDays(nextOrder.date, -holdDays) : null;
-  const daysToPickBy   = pickByDate ? daysAgo(pickByDate) * -1 : null;
+  const upcomingBinsNeeded  = upcomingOrders.reduce((s, o) => s + Number(o.bins_required), 0);
+  const binsInStorage    = Number(summary?.bins_in_storage    || 0); // < holdMin days — not packable yet
+  const binsReadyToPack  = Number(summary?.bins_ready_to_pack || 0); // ≥ holdMin days — packable
+  const binsTotalAvail   = Number(summary?.bins_total_available || 0); // all picked, not dispatched
+  const binsToday        = Number(summary?.bins_today         || 0);
+  const binsThisWeek     = Number(summary?.bins_this_week     || 0);
+  // Shortfall uses ALL available bins (in storage + ready) vs upcoming orders
+  const stockShortfall   = upcomingBinsNeeded - binsTotalAvail;
+  const nextOrder        = summary?.next_order;
+  const pickByDate       = nextOrder ? addDays(nextOrder.date, -holdMin) : null;
+  const daysToPickBy     = pickByDate ? daysAgo(pickByDate) * -1 : null;
 
   // Build 6-week aligned calendar starting from Monday
   const calendarCells = useMemo(() => {
@@ -442,11 +445,16 @@ export default function PickingLogPage() {
             Track daily bin picks and manage your weekly order forecast
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <label style={{ fontSize: '0.8rem', color: '#5a6a5a', fontWeight: 600 }}>Hold period:</label>
-          <input type="number" min="1" max="30" value={holdDays}
-            onChange={e => setHoldDays(Number(e.target.value))}
-            style={{ width: 54, padding: '0.3rem 0.5rem', borderRadius: 6,
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: '0.8rem', color: '#5a6a5a', fontWeight: 600 }}>Hold window:</label>
+          <input type="number" min="1" max="30" value={holdMin}
+            onChange={e => setHoldMin(Number(e.target.value))}
+            style={{ width: 48, padding: '0.3rem 0.4rem', borderRadius: 6,
+              border: '1.5px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }} />
+          <span style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>–</span>
+          <input type="number" min="1" max="60" value={holdMax}
+            onChange={e => setHoldMax(Number(e.target.value))}
+            style={{ width: 48, padding: '0.3rem 0.4rem', borderRadius: 6,
               border: '1.5px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }} />
           <span style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>days</span>
         </div>
@@ -456,10 +464,12 @@ export default function PickingLogPage() {
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <StatCard label="Today" value={fmtNum(binsToday)} unit="bins" />
         <StatCard label="This Week" value={fmtNum(binsThisWeek)} unit="bins" />
-        <StatCard label={`In Hold (≤${holdDays}d)`} value={fmtNum(binsInHold)} unit="bins"
-          sub="Not yet ready to dispatch" color="#e67e22" />
-        <StatCard label="Ready to Dispatch" value={fmtNum(binsReady)} unit="bins"
-          sub={`Held >${holdDays} days`} color="#2980b9" />
+        <StatCard label={`In Storage (<${holdMin}d)`} value={fmtNum(binsInStorage)} unit="bins"
+          sub="Not yet at minimum hold" color="#e67e22" />
+        <StatCard label={`Ready to Pack (≥${holdMin}d)`} value={fmtNum(binsReadyToPack)} unit="bins"
+          sub={`Past ${holdMin}-day minimum hold`} color="#2980b9" />
+        <StatCard label="Total Available" value={fmtNum(binsTotalAvail)} unit="bins"
+          sub="In storage + ready to pack" color="#6c3483" />
         <StatCard label="Upcoming Orders" value={fmtNum(upcomingBinsNeeded)} unit="bins"
           sub={upcomingOrders.length > 0 ? `${upcomingOrders.length} order${upcomingOrders.length !== 1 ? 's' : ''}` : 'No orders entered'}
           warn={stockShortfall > 0} color={stockShortfall > 0 ? '#c0392b' : '#2d6a1f'} />
@@ -526,7 +536,7 @@ export default function PickingLogPage() {
                 const isFuture = d > TODAY;
                 const isPast90 = d < from90;
                 const ago = daysAgo(d);
-                const inHold = total > 0 && ago >= 0 && ago < holdDays;
+                const inHold = total > 0 && ago >= 0 && ago < holdMin;
 
                 return (
                   <button key={d} onClick={() => setSelectedDate(d)}
@@ -645,7 +655,7 @@ export default function PickingLogPage() {
               <div style={{ marginTop:'1rem', display:'flex', flexDirection:'column', gap:'0.4rem' }}>
                 {orders.map(o => {
                   const isPast  = o.date < TODAY;
-                  const pickBy  = addDays(o.date, -holdDays);
+                  const pickBy  = addDays(o.date, -holdMin);
                   return (
                     <div key={o.id} style={{
                       display:'flex', alignItems:'flex-start', gap:'0.6rem',
@@ -718,7 +728,7 @@ export default function PickingLogPage() {
                   .map(([date, entries]) => {
                     const total = entries.reduce((s, e) => s + Number(e.bins_picked), 0);
                     const ago = daysAgo(date);
-                    const ready = ago >= holdDays;
+                    const ready = ago >= holdMin;
                     return (
                       <div key={date} onClick={() => setSelectedDate(date)}
                         style={{
@@ -734,7 +744,7 @@ export default function PickingLogPage() {
                             <span style={{ fontSize:'0.7rem', padding:'1px 7px', borderRadius:10,
                               fontWeight:600, background: ready ? '#e0f0ff' : '#fff3e0',
                               color: ready ? '#2980b9' : '#e67e22' }}>
-                              {ready ? '✓ Ready' : `${holdDays - ago}d to go`}
+                              {ready ? '✓ Ready' : `${holdMin - ago}d to go`}
                             </span>
                             <span style={{ fontWeight:800, color:'#2d6a1f', fontSize:'0.95rem' }}>
                               {fmtNum(total)}
