@@ -569,13 +569,7 @@ export default function PickingLogPage() {
         <StatCard label={`In Storage (<${holdMin}d)`} value={fmtNum(binsInStorage)} unit="bins"
           sub="Not yet at minimum hold" color="#e67e22" />
         <StatCard label={`Ready to Pack (≥${holdMin}d)`} value={fmtNum(binsReadyToPack)} unit="bins"
-          sub={`Past ${holdMin}-day minimum hold`} color="#2980b9" />
-        <StatCard label="Total Available" value={fmtNum(binsTotalAvail)} unit="bins"
-          sub="In storage + ready to pack" color="#6c3483" />
-        <StatCard label="Graded" value={fmtNum(binsGraded)} unit="bins"
-          sub="Last 60 days" color="#16a085" />
-        <StatCard label="Awaiting Grading" value={fmtNum(binsAwaitingGrading)} unit="bins"
-          sub="Ready but not yet graded" color="#16a085" />
+          sub="Awaiting grading / dispatch" color="#2980b9" />
         <StatCard label="Upcoming Orders" value={fmtNum(upcomingBinsNeeded)} unit="bins"
           sub={upcomingOrders.length > 0 ? `${upcomingOrders.length} order${upcomingOrders.length !== 1 ? 's' : ''}` : 'No orders entered'}
           warn={stockShortfall > 0} color={stockShortfall > 0 ? '#c0392b' : '#2d6a1f'} />
@@ -583,7 +577,7 @@ export default function PickingLogPage() {
           <StatCard label="Shortfall" value={fmtNum(stockShortfall)} unit="bins"
             sub="Need to pick more" warn />
         ) : upcomingBinsNeeded > 0 ? (
-          <StatCard label="Surplus" value={fmtNum(Math.abs(stockShortfall))} unit="bins"
+          <StatCard label="Surplus" value={fmtNum(-stockShortfall)} unit="bins"
             sub="Ahead of orders" color="#27ae60" />
         ) : null}
       </div>
