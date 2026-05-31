@@ -16,7 +16,7 @@ const portalMatch = window.location.pathname.match(/^\/safety\/([a-f0-9]{32})$/i
 const TABS = [
   { id: 'dashboard',    label: 'Live Map' },
   { id: 'picking-plan', label: 'Picking Plan' },
-  { id: 'picking-log',  label: '🥑 Harvest' },
+  { id: 'picking-log',  label: '🥑 Schedule' },
   { id: 'safety',       label: '⚠ Safety' },
   // { id: 'events', label: 'Events' },  // Hidden until GPS trackers are installed
   { id: 'growers',      label: 'Growers' },

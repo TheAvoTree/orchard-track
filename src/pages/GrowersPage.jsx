@@ -18,7 +18,6 @@ const INPUT = { padding: '0.38rem 0.55rem', borderRadius: 6, border: '1px solid 
 export default function GrowersPage() {
   const { data, loading, refetch } = useApi('/api/growers');
   const [search, setSearch]   = useState('');
-  const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
@@ -26,20 +25,6 @@ export default function GrowersPage() {
     g.name.toLowerCase().includes(search.toLowerCase()) ||
     g.address?.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
-
-  async function handleSync() {
-    setSyncing(true);
-    try {
-      const res = await fetch('/api/growers/sync', { method: 'POST' });
-      const result = await res.json();
-      alert(`Sync complete: ${result.upserted} growers updated, ${result.geocoded} geocoded.`);
-      refetch();
-    } catch {
-      alert('Sync failed — check backend connection.');
-    } finally {
-      setSyncing(false);
-    }
-  }
 
   async function handleDelete(g) {
     if (!confirm(`Delete grower "${g.name}"? This cannot be undone.`)) return;
@@ -65,9 +50,6 @@ export default function GrowersPage() {
               fontSize: '0.88rem', width: 200 }} />
           <button className="btn" onClick={() => { setShowAdd(v => !v); setEditingId(null); }} style={{ fontSize: '0.85rem' }}>
             {showAdd ? 'Cancel' : '+ Add Grower'}
-          </button>
-          <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'Syncing…' : '↑ Sync from Sheets'}
           </button>
         </div>
       </div>

@@ -305,9 +305,6 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Picking Log Workers */}
-      <WorkersCard />
-
       {/* Push Notifications */}
       <PushNotificationCard />
 
