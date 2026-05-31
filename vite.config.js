@@ -7,6 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // injectManifest lets us write our own SW file with push support
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Orchard Track',
@@ -18,20 +22,6 @@ export default defineConfig({
         start_url: '/',
         icons: [
           { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable any' },
-        ],
-      },
-      workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\/gps\/latest/,
-            handler: 'NetworkFirst',
-            options: { cacheName: 'api-positions', networkTimeoutSeconds: 5 },
-          },
-          {
-            urlPattern: /\/api\/growers/,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'api-growers' },
-          },
         ],
       },
     }),

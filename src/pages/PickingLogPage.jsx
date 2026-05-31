@@ -299,6 +299,23 @@ export default function PickingLogPage() {
     return Array.from({ length: 42 }, (_, i) => addDays(start, i));
   }, []);
 
+  // When geofence detects an orchard, show a local notification if permission granted
+  const lastNotifiedOrchard = useRef(null);
+  useEffect(() => {
+    if (!nearbyOrchard || nearbyOrchard.id === lastNotifiedOrchard.current) return;
+    lastNotifiedOrchard.current = nearbyOrchard.id;
+    if ('Notification' in window && Notification.permission === 'granted') {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(`📍 You're at ${nearbyOrchard.name}`, {
+          body: 'Log any bins picked today in AvoGrade.',
+          icon: '/icon.svg',
+          tag:  'geofence-arrival',
+          data: { url: '/' },
+        });
+      });
+    }
+  }, [nearbyOrchard]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   async function toggleFulfilled(order) {

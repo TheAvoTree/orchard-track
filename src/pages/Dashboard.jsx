@@ -318,7 +318,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 56px)' }}>
+    <div className="map-page-fill" style={{ display: 'flex', flex: 1, height: 'calc(100vh - 64px)' }}>
       <div style={{ flex: 1, position: 'relative' }}>
 
         {/* Arrival hazard warning banner — fires when any vehicle enters a geofence with active hazards */}

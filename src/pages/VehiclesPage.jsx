@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { useApi } from '../hooks/useApi.js';
+import { format } from 'date-fns';
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -491,14 +494,15 @@ export default function VehiclesPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: '1rem', borderBottom: '2px solid #e8f0e8' }}>
-        {['vehicles', 'maintenance'].map(t => (
+        {[['vehicles','Assets'],['maintenance','Maintenance'],['events','Tracker Events']].map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '0.45rem 1rem', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid #2d6a2d' : '2px solid transparent',
             background: 'none', fontWeight: tab === t ? 700 : 400,
             color: tab === t ? '#2d6a2d' : '#666', fontSize: '0.9rem', marginBottom: -2,
+            whiteSpace: 'nowrap',
           }}>
-            {t === 'vehicles' ? 'Assets' : 'Maintenance'}
+            {label}
           </button>
         ))}
       </div>
@@ -575,6 +579,78 @@ export default function VehiclesPage() {
       )}
 
       {tab === 'maintenance' && <FleetMaintenance />}
+      {tab === 'events'      && <TrackerEvents />}
+    </div>
+  );
+}
+
+// ── Tracker Events ────────────────────────────────────────────────────────────
+
+function TrackerEvents() {
+  const { data, loading, refetch } = useApi(`${BACKEND}/api/events?limit=100`);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <div style={{ fontWeight: 700, color: '#11420A', fontSize: '0.95rem' }}>Arrival &amp; Departure Events</div>
+          <div style={{ fontSize: '0.8rem', color: '#5a6a5a', marginTop: 2 }}>
+            Logged automatically when vehicles enter or leave orchard geofences
+          </div>
+        </div>
+        <button className="btn btn-secondary" onClick={refetch}>↻ Refresh</button>
+      </div>
+
+      <div className="card" style={{ padding: '1rem' }}>
+        {loading && <div style={{ color: '#888', padding: '1rem', textAlign: 'center' }}>Loading…</div>}
+        {!loading && !data?.length && (
+          <div style={{ color: '#aaa', padding: '1.5rem', textAlign: 'center', fontSize: '0.88rem' }}>
+            No events recorded yet — events will appear here once GPS trackers are installed in vehicles.
+          </div>
+        )}
+        {data?.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Event</th>
+                  <th>Grower / Orchard</th>
+                  <th>Vehicle</th>
+                  <th>Driver</th>
+                  <th>Notified</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map(e => (
+                  <tr key={e.id}>
+                    <td style={{ whiteSpace: 'nowrap', color: '#5a6a5a', fontSize: '0.82rem' }}>
+                      {format(new Date(e.occurred_at), 'dd MMM yyyy HH:mm')}
+                    </td>
+                    <td>
+                      <span style={{
+                        borderRadius: 5, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600,
+                        background: e.event_type === 'arrival' ? '#d4edda' : '#f8d7da',
+                        color: e.event_type === 'arrival' ? '#155724' : '#721c24',
+                      }}>
+                        {e.event_type === 'arrival' ? '▶ Arrived' : '◀ Departed'}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 500 }}>{e.grower_name}</td>
+                    <td>{e.vehicle_name}</td>
+                    <td>{e.driver_name ?? '—'}</td>
+                    <td style={{ fontSize: '0.78rem' }}>
+                      {e.notified_sms   && <span style={{ background: '#cce5ff', color: '#004085', borderRadius: 4, padding: '1px 6px', marginRight: 3 }}>SMS</span>}
+                      {e.notified_email && <span style={{ background: '#d4edda', color: '#155724', borderRadius: 4, padding: '1px 6px' }}>Email</span>}
+                      {!e.notified_sms && !e.notified_email && <span style={{ color: '#ccc' }}>—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

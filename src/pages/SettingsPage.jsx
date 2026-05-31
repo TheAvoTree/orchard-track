@@ -308,6 +308,9 @@ export default function SettingsPage() {
       {/* Picking Log Workers */}
       <WorkersCard />
 
+      {/* Push Notifications */}
+      <PushNotificationCard />
+
       {/* Email Notifications */}
       <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
@@ -581,6 +584,136 @@ function WorkersCard() {
       </div>
     </div>
   );
+}
+
+// ── Push Notification Card ────────────────────────────────────────────────────
+
+function PushNotificationCard() {
+  const [status,     setStatus]     = useState('idle'); // idle | subscribed | denied | unsupported
+  const [saving,     setSaving]     = useState(false);
+  const [testResult, setTestResult] = useState('');
+
+  // Check current subscription state on mount
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setStatus('unsupported'); return;
+    }
+    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
+      setStatus(sub ? 'subscribed' : 'idle');
+    });
+  }, []);
+
+  async function subscribe() {
+    setSaving(true); setTestResult('');
+    try {
+      // Fetch VAPID public key from backend
+      const keyRes = await fetch(`${BACKEND}/api/push/vapid-public-key`);
+      const { publicKey } = await keyRes.json();
+
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      await fetch(`${BACKEND}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 60) }),
+      });
+      setStatus('subscribed');
+    } catch (err) {
+      if (err.name === 'NotAllowedError') setStatus('denied');
+      else setTestResult(`Error: ${err.message}`);
+    }
+    setSaving(false);
+  }
+
+  async function unsubscribe() {
+    setSaving(true);
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch(`${BACKEND}/api/push/unsubscribe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+    setStatus('idle'); setSaving(false);
+  }
+
+  async function sendTest() {
+    setTestResult('Sending…');
+    const res = await fetch(`${BACKEND}/api/push/test`, { method: 'POST' });
+    const d = await res.json();
+    setTestResult(res.ok ? `✓ Sent to ${d.sent} device${d.sent !== 1 ? 's' : ''}` : `Error: ${d.error}`);
+  }
+
+  return (
+    <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+        📱 Push Notifications
+      </h2>
+      <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0, marginBottom: '1rem' }}>
+        Enable push notifications on this device to receive orchard arrival reminders
+        even when the app is not open.
+      </p>
+
+      {status === 'unsupported' && (
+        <div style={{ color: '#888', fontSize: '0.85rem' }}>
+          Push notifications are not supported on this browser.
+          On iPhone, install the app first (Safari → Share → Add to Home Screen), then return here.
+        </div>
+      )}
+
+      {status === 'denied' && (
+        <div style={{ color: '#c0392b', fontSize: '0.85rem' }}>
+          Permission denied. Go to your browser/phone settings and allow notifications for this site, then try again.
+        </div>
+      )}
+
+      {status === 'idle' && (
+        <button className="btn btn-primary" onClick={subscribe} disabled={saving}>
+          {saving ? 'Enabling…' : '🔔 Enable notifications on this device'}
+        </button>
+      )}
+
+      {status === 'subscribed' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+            color: '#155724', background: '#d4edda', borderRadius: 8,
+            padding: '0.5rem 0.75rem', fontSize: '0.88rem', fontWeight: 600 }}>
+            ✓ Notifications enabled on this device
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={sendTest} style={{ fontSize: '0.83rem' }}>
+              Send test notification
+            </button>
+            <button className="btn btn-secondary" onClick={unsubscribe} disabled={saving}
+              style={{ fontSize: '0.83rem', color: '#c0392b' }}>
+              {saving ? 'Removing…' : 'Disable'}
+            </button>
+          </div>
+          {testResult && <div style={{ fontSize: '0.82rem', color: '#5a6a5a' }}>{testResult}</div>}
+        </div>
+      )}
+
+      <p style={{ color: '#5a6a5a', fontSize: '0.78rem', marginTop: '0.75rem', marginBottom: 0 }}>
+        Enable on each device you want to receive notifications. Notifications are sent when
+        your phone detects it's within an orchard geofence (app must be open for location detection).
+        Background geofencing requires the installed app version.
+      </p>
+    </div>
+  );
+}
+
+// Convert VAPID public key from base64 to Uint8Array
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
 }
 
 function Toggle({ label, checked, onChange }) {
