@@ -48,7 +48,6 @@ const TODAY = toYMD(new Date());
 
 // ── Geofence helpers ──────────────────────────────────────────────────────────
 
-// Haversine distance in metres between two lat/lng points
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -59,7 +58,6 @@ function haversineM(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Returns the nearest grower within radiusM, or null
 function nearestInGeofence(lat, lng, growers, radiusM) {
   let best = null, bestDist = Infinity;
   for (const g of (growers || [])) {
@@ -85,215 +83,9 @@ function StatCard({ label, value, unit, sub, color = '#2d6a1f', warn }) {
       </div>
       <div style={{ fontSize: '1.8rem', fontWeight: 800, color: warn ? '#c0392b' : color, lineHeight: 1 }}>
         {value}
-        <span style={{ fontSize: '0.82rem', fontWeight: 500, color: '#5a6a5a', marginLeft: 4 }}>{unit}</span>
+        {unit && <span style={{ fontSize: '0.82rem', fontWeight: 500, color: '#5a6a5a', marginLeft: 4 }}>{unit}</span>}
       </div>
       {sub && <div style={{ fontSize: '0.76rem', color: '#5a6a5a', marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
-}
-
-// ── Day pick log modal ────────────────────────────────────────────────────────
-
-function DayPickModal({ date, growers, existingEntries, defaultGrowerId, onSaved, onClose }) {
-  // Build initial state from existing entries keyed by grower_id (null = no grower)
-  const initEntries = () => {
-    const map = {};
-    for (const e of existingEntries) {
-      const key = e.grower_id ?? 'none';
-      map[key] = { ...e, bins: String(e.bins_picked) };
-    }
-    return map;
-  };
-
-  const [entries, setEntries] = useState(initEntries);
-  const [saving, setSaving] = useState(false);
-
-  // Active grower selections — pre-fill with detected orchard if no existing entries
-  const [selectedGrowers, setSelectedGrowers] = useState(() => {
-    const keys = Object.keys(initEntries());
-    if (keys.length > 0) return keys;
-    return [defaultGrowerId ? String(defaultGrowerId) : 'none'];
-  });
-
-  function setField(key, field, val) {
-    setEntries(prev => ({ ...prev, [key]: { ...prev[key], [field]: val } }));
-  }
-
-  function addGrowerRow() {
-    // Find first grower not already in the list
-    const used = new Set(selectedGrowers.filter(k => k !== 'none').map(Number));
-    const next = growers?.find(g => !used.has(g.id));
-    if (!next) return;
-    const key = String(next.id);
-    setSelectedGrowers(prev => [...prev, key]);
-  }
-
-  function removeRow(key) {
-    setSelectedGrowers(prev => prev.filter(k => k !== key));
-    setEntries(prev => { const n = { ...prev }; delete n[key]; return n; });
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      // Build the full list of entries for this day and send in one request
-      const entriesToSave = selectedGrowers
-        .map(key => ({
-          grower_id: key === 'none' ? null : Number(key),
-          bins_picked: Number(entries[key]?.bins) || 0,
-          notes: entries[key]?.notes || null,
-        }))
-        .filter(e => e.bins_picked > 0);
-
-      const res = await fetch(`${BACKEND}/api/harvest/picks/day`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pick_date: date, entries: entriesToSave }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || `Save failed (${res.status})`);
-      }
-      onSaved();
-      onClose();
-    } catch (err) { alert(`Failed to save: ${err.message}`); }
-    finally { setSaving(false); }
-  }
-
-  const totalBins = selectedGrowers.reduce((s, k) => s + (Number(entries[k]?.bins) || 0), 0);
-  const allGrowersUsed = growers && selectedGrowers.filter(k => k !== 'none').length >= growers.length;
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520,
-        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
-      }}>
-        {/* Header */}
-        <div style={{ padding: '1.1rem 1.4rem', borderBottom: '1px solid #eef2ee',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#11420A' }}>Log Bins Picked</div>
-            <div style={{ fontSize: '0.82rem', color: '#5a6a5a', marginTop: 1 }}>{fmtLongDate(date)}</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none',
-            fontSize: '1.3rem', cursor: 'pointer', color: '#999' }}>✕</button>
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.4rem' }}>
-          <div style={{ fontSize: '0.8rem', color: '#5a6a5a', marginBottom: '0.75rem' }}>
-            Select the orchard and enter bins picked. Add a row for each orchard visited today.
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {selectedGrowers.map((key, idx) => {
-              const e = entries[key] || {};
-              return (
-                <div key={key} style={{
-                  border: `1.5px solid ${Number(e.bins) > 0 ? '#2d6a1f' : '#eef2ee'}`,
-                  borderRadius: 10, padding: '0.7rem 0.85rem',
-                  background: Number(e.bins) > 0 ? '#f7fbf7' : '#fff',
-                }}>
-                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-                    {/* Grower selector */}
-                    <div style={{ flex: 1 }}>
-                      <select
-                        value={key}
-                        onChange={ev => {
-                          const newKey = ev.target.value;
-                          const updatedList = [...selectedGrowers];
-                          updatedList[idx] = newKey;
-                          setSelectedGrowers(updatedList);
-                          // Move entry data
-                          const prev = entries[key];
-                          setEntries(p => {
-                            const n = { ...p };
-                            if (prev) { n[newKey] = { ...prev }; delete n[key]; }
-                            return n;
-                          });
-                        }}
-                        style={{ width: '100%', padding: '0.4rem 0.5rem', borderRadius: 7,
-                          border: '1.5px solid #d4e0d4', fontSize: '0.9rem',
-                          background: '#fff', color: '#11420A', fontWeight: 500 }}>
-                        <option value="none">— No specific orchard —</option>
-                        {growers?.map(g => (
-                          <option key={g.id} value={String(g.id)}
-                            disabled={selectedGrowers.includes(String(g.id)) && String(g.id) !== key}>
-                            {g.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Bins input */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <input
-                        type="number" min="0" step="0.5"
-                        value={e.bins || ''}
-                        onChange={ev => setField(key, 'bins', ev.target.value)}
-                        placeholder="0"
-                        style={{ width: 72, padding: '0.4rem 0.5rem', borderRadius: 7,
-                          border: '1.5px solid #d4e0d4', fontSize: '1rem',
-                          textAlign: 'center', fontWeight: 700 }}
-                      />
-                      <span style={{ fontSize: '0.78rem', color: '#5a6a5a' }}>bins</span>
-                    </div>
-
-                    {/* Remove row */}
-                    {selectedGrowers.length > 1 && (
-                      <button onClick={() => removeRow(key)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer',
-                          color: '#ddd', fontSize: '1rem', padding: '0 2px',
-                          transition: 'color 0.15s', flexShrink: 0 }}
-                        onMouseEnter={e => e.currentTarget.style.color = '#e74c3c'}
-                        onMouseLeave={e => e.currentTarget.style.color = '#ddd'}>✕</button>
-                    )}
-                  </div>
-
-                  {/* Notes — show when bins entered */}
-                  {Number(e.bins) > 0 && (
-                    <input type="text" value={e.notes || ''}
-                      onChange={ev => setField(key, 'notes', ev.target.value)}
-                      placeholder="Notes (optional)"
-                      style={{ marginTop: '0.45rem', width: '100%', padding: '0.32rem 0.5rem',
-                        borderRadius: 6, border: '1px solid #d4e0d4', fontSize: '0.82rem',
-                        boxSizing: 'border-box' }} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Add another orchard row */}
-          {!allGrowersUsed && (
-            <button onClick={addGrowerRow}
-              style={{ marginTop: '0.6rem', background: 'none', border: '1.5px dashed #c8e6c8',
-                borderRadius: 8, padding: '0.45rem 1rem', color: '#2d6a1f',
-                cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, width: '100%' }}>
-              + Add another orchard
-            </button>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '0.9rem 1.4rem', borderTop: '1px solid #eef2ee',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '0.88rem', color: '#5a6a5a' }}>
-            Total: <strong style={{ color: '#2d6a1f' }}>{fmtNum(totalBins)} bins</strong>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving || totalBins === 0}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -301,9 +93,9 @@ function DayPickModal({ date, growers, existingEntries, defaultGrowerId, onSaved
 // ── Order forecast form ───────────────────────────────────────────────────────
 
 function OrderForm({ onSaved, editing, onCancel }) {
-  const [date,     setDate]     = useState(editing?.dispatch_date?.slice(0,10) || addDays(TODAY, 14));
+  const [date,     setDate]     = useState(editing?.dispatch_date?.slice(0,10) || editing?.date?.slice(0,10) || addDays(TODAY, 14));
   const [bins,     setBins]     = useState(editing ? String(editing.bins_required) : '');
-  const [customer, setCustomer] = useState(editing?.customer || 'Hass');
+  const [variety,  setVariety]  = useState(editing?.customer || 'Hass');
   const [notes,    setNotes]    = useState(editing?.notes || '');
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
@@ -320,7 +112,7 @@ function OrderForm({ onSaved, editing, onCancel }) {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dispatch_date: date, bins_required: Number(bins), customer, notes }),
+        body: JSON.stringify({ dispatch_date: date, bins_required: Number(bins), customer: variety, notes }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -328,7 +120,7 @@ function OrderForm({ onSaved, editing, onCancel }) {
         return;
       }
       onSaved();
-      if (!editing) { setBins(''); setCustomer(''); setNotes(''); }
+      if (!editing) { setBins(''); setNotes(''); setVariety('Hass'); }
     } catch (err) { setError('Connection error — try again.'); }
     finally { setSaving(false); }
   }
@@ -353,7 +145,7 @@ function OrderForm({ onSaved, editing, onCancel }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 130 }}>
           <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#3a4a3a' }}>Variety</label>
-          <input type="text" value={customer} onChange={e => setCustomer(e.target.value)}
+          <input type="text" value={variety} onChange={e => setVariety(e.target.value)}
             placeholder="e.g. Hass"
             style={{ padding: '0.42rem 0.6rem', borderRadius: 7, border: '1.5px solid #d4e0d4', fontSize: '0.9rem' }} />
         </div>
@@ -376,174 +168,73 @@ function OrderForm({ onSaved, editing, onCancel }) {
   );
 }
 
-// ── Grading log form ──────────────────────────────────────────────────────────
-
-function GradingForm({ growers, onSaved }) {
-  const [date,     setDate]     = useState(TODAY);
-  const [growerId, setGrowerId] = useState('');
-  const [bins,     setBins]     = useState('');
-  const [notes,    setNotes]    = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState('');
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!date || !bins) return;
-    setSaving(true); setError('');
-    try {
-      const res = await fetch(`${BACKEND}/api/harvest/grading`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_date: date,
-          grower_id: growerId ? Number(growerId) : null,
-          bins_graded: Number(bins),
-          notes: notes || null,
-        }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setError(d.error || `Server error (${res.status})`);
-        return;
-      }
-      setBins(''); setNotes('');
-      onSaved();
-    } catch (err) { setError('Connection error — try again.'); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', alignItems:'flex-end' }}>
-        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4', fontSize:'0.9rem' }} />
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:120 }}>
-          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Grower</label>
-          <select value={growerId} onChange={e => setGrowerId(e.target.value)}
-            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4',
-              fontSize:'0.9rem', background:'#fff', color:'#11420A' }}>
-            <option value="">— Any grower —</option>
-            {(growers || []).map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Bins graded</label>
-          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <input type="number" min="0" step="0.5" value={bins} onChange={e => setBins(e.target.value)}
-              placeholder="0"
-              style={{ width:72, padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4',
-                fontSize:'0.9rem', textAlign:'center', fontWeight:700 }} />
-            <span style={{ fontSize:'0.8rem', color:'#5a6a5a' }}>bins</span>
-          </div>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:100 }}>
-          <label style={{ fontSize:'0.75rem', fontWeight:600, color:'#3a4a3a' }}>Notes</label>
-          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="optional"
-            style={{ padding:'0.42rem 0.6rem', borderRadius:7, border:'1.5px solid #c8e8e4', fontSize:'0.9rem' }} />
-        </div>
-        <button type="submit" disabled={saving || !bins || !date}
-          style={{ alignSelf:'flex-end', padding:'0.45rem 1rem', borderRadius:8,
-            background:'#16a085', color:'#fff', border:'none', cursor:'pointer',
-            fontWeight:700, fontSize:'0.88rem', whiteSpace:'nowrap',
-            opacity: (saving || !bins || !date) ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : '+ Log Grading'}
-        </button>
-      </div>
-      {error && <div style={{ marginTop:'0.4rem', color:'#c0392b', fontSize:'0.82rem' }}>{error}</div>}
-    </form>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PickingLogPage() {
   const [selectedDate, setSelectedDate] = useState(TODAY);
-  const [showPickModal, setShowPickModal] = useState(false);
-  const [editingOrder, setEditingOrder]  = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [holdMin, setHoldMin] = useState(7);
   const [holdMax, setHoldMax] = useState(10);
 
-  const from90 = addDays(TODAY, -90);
-  const to60   = addDays(TODAY, 60);
+  const to60 = addDays(TODAY, 60);
 
-  const { data: summary, refetch: refetchSummary } =
-    useApi(`${BACKEND}/api/harvest/summary?hold_min=${holdMin}&hold_max=${holdMax}`);
-  const { data: picks, refetch: refetchPicks } =
-    useApi(`${BACKEND}/api/harvest/picks?from=${from90}&to=${TODAY}`);
+  // ── Data fetching ─────────────────────────────────────────────────────────
+
+  // Current AvoGrade season
+  const { data: seasons } = useApi(`${BACKEND}/api/seasons`);
+  const currentSeason = useMemo(() => {
+    if (!seasons?.length) return null;
+    return [...seasons].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))[0];
+  }, [seasons]);
+
+  // AvoGrade bin stats (In Storage, Graded, Season Total)
+  const { data: binStats, refetch: refetchBinStats } = useApi(
+    currentSeason ? `${BACKEND}/api/bins/stats?season_id=${currentSeason.id}` : null
+  );
+
+  // AvoGrade individual bins (for calendar daily totals)
+  const { data: bins, refetch: refetchBins } = useApi(
+    currentSeason ? `${BACKEND}/api/bins?season_id=${currentSeason.id}` : null
+  );
+
+  // OrchardTrack order forecasts (picking deadlines)
   const { data: orders, refetch: refetchOrders } =
     useApi(`${BACKEND}/api/harvest/orders?from=${addDays(TODAY, -7)}&to=${to60}`);
+
+  // Growers for geofence detection
   const { data: growers } = useApi(`${BACKEND}/api/growers`);
-  const { data: gradings, refetch: refetchGradings } =
-    useApi(`${BACKEND}/api/harvest/grading?from=${from90}&to=${TODAY}`);
+
+  // Settings for geofence radius
   const { data: settings } = useApi(`${BACKEND}/api/settings`);
 
-  // ── Mobile geofence detection ─────────────────────────────────────────────
-  const [nearbyOrchard, setNearbyOrchard] = useState(null); // grower obj or null
-  const [locationError, setLocationError] = useState('');
-  const [locationWatching, setLocationWatching] = useState(false);
-  const watchIdRef = useRef(null);
-  const geofenceRadius = Number(settings?.geofence_radius_metres) || 200;
+  function refetchAll() { refetchBinStats(); refetchBins(); refetchOrders(); }
 
-  function startWatching() {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation not supported on this device.');
-      return;
-    }
-    setLocationError('');
-    setLocationWatching(true);
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      pos => {
-        const found = nearestInGeofence(
-          pos.coords.latitude, pos.coords.longitude, growers, geofenceRadius
-        );
-        setNearbyOrchard(found);
-      },
-      err => {
-        setLocationError(err.code === 1 ? 'Location permission denied.' : 'Unable to get location.');
-        setLocationWatching(false);
-      },
-      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
-    );
-  }
+  // ── Derived data ──────────────────────────────────────────────────────────
 
-  function stopWatching() {
-    if (watchIdRef.current != null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    setLocationWatching(false);
-    setNearbyOrchard(null);
-  }
-
-  // Clean up watcher on unmount
-  useEffect(() => () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); }, []);
-
-  function refetchAll() { refetchSummary(); refetchPicks(); refetchOrders(); refetchGradings(); }
-
-  // Group picks by date → array of entries
-  const picksByDate = useMemo(() => {
-    const m = {};
-    for (const p of (picks || [])) {
-      if (!m[p.date]) m[p.date] = [];
-      m[p.date].push(p);
-    }
-    return m;
-  }, [picks]);
-
-  // Daily totals for calendar
+  // Group AvoGrade bins by pick date → daily totals (large-bin equivalents)
   const dailyTotals = useMemo(() => {
     const m = {};
-    for (const [date, entries] of Object.entries(picksByDate)) {
-      m[date] = entries.reduce((s, e) => s + Number(e.bins_picked), 0);
+    for (const b of (bins || [])) {
+      const d = toYMD(new Date(b.date_picked));
+      m[d] = (m[d] || 0) + Number(b.bin_equivalent || 1);
     }
     return m;
-  }, [picksByDate]);
+  }, [bins]);
+
+  // Bins picked on selected date, grouped by grower
+  const selectedDayBins = useMemo(() => {
+    if (!bins) return [];
+    return (bins).filter(b => toYMD(new Date(b.date_picked)) === selectedDate);
+  }, [bins, selectedDate]);
+
+  const selectedDayByGrower = useMemo(() => {
+    const m = {};
+    for (const b of selectedDayBins) {
+      if (!m[b.grower]) m[b.grower] = { total: 0, variety: b.variety };
+      m[b.grower].total += Number(b.bin_equivalent || 1);
+    }
+    return m;
+  }, [selectedDayBins]);
 
   const ordersMap = useMemo(() => {
     const m = {};
@@ -551,22 +242,68 @@ export default function PickingLogPage() {
     return m;
   }, [orders]);
 
-  // Map of session_date → array of grading sessions (for calendar badges)
-  const gradingsByDate = useMemo(() => {
-    const m = {};
-    for (const g of (gradings || [])) {
-      if (!m[g.session_date]) m[g.session_date] = [];
-      m[g.session_date].push(g);
-    }
-    return m;
-  }, [gradings]);
+  // Stats from AvoGrade
+  const binsInStorage = Number(binStats?.in_storage || 0);
+  const binsGraded    = Number(binStats?.graded      || 0);
+  const binsSeason    = Number(binStats?.total_equiv  || 0);
 
-  const selectedEntries = picksByDate[selectedDate] || [];
+  // Oldest bin in storage
+  const oldestBinAge = useMemo(() => {
+    const inStorage = (bins || []).filter(b => b.status === 'in-storage');
+    if (!inStorage.length) return null;
+    const oldest = inStorage.reduce((min, b) =>
+      new Date(b.date_picked) < new Date(min.date_picked) ? b : min
+    );
+    return daysAgo(toYMD(new Date(oldest.date_picked)));
+  }, [bins]);
+
+  // Order forecast calculations
+  const upcomingOrders = (orders || []).filter(o => !o.fulfilled && o.date >= TODAY);
+  const upcomingBinsNeeded = upcomingOrders.reduce((s, o) => s + Number(o.bins_required), 0);
+  const stockShortfall = upcomingBinsNeeded - binsInStorage;
+
+  const nextOrder    = upcomingOrders[0] ?? null;
+  const pickByDate   = nextOrder ? addDays(nextOrder.date, -holdMin) : null;
+  const daysToPickBy = pickByDate ? daysAgo(pickByDate) * -1 : null;
+
+  // ── Mobile geofence detection ─────────────────────────────────────────────
+  const [nearbyOrchard,   setNearbyOrchard]   = useState(null);
+  const [locationError,   setLocationError]   = useState('');
+  const [locationWatching, setLocationWatching] = useState(false);
+  const watchIdRef = useRef(null);
+  const geofenceRadius = Number(settings?.geofence_radius_metres) || 200;
+
+  function startWatching() {
+    if (!navigator.geolocation) { setLocationError('Geolocation not supported on this device.'); return; }
+    setLocationError(''); setLocationWatching(true);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      pos => setNearbyOrchard(nearestInGeofence(pos.coords.latitude, pos.coords.longitude, growers, geofenceRadius)),
+      err => { setLocationError(err.code === 1 ? 'Location permission denied.' : 'Unable to get location.'); setLocationWatching(false); },
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+    );
+  }
+
+  function stopWatching() {
+    if (watchIdRef.current != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+    setLocationWatching(false); setNearbyOrchard(null);
+  }
+
+  useEffect(() => () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); }, []);
+
+  // ── Calendar cells (6 weeks aligned to Monday) ───────────────────────────
+  const calendarCells = useMemo(() => {
+    const startRaw = addDays(TODAY, -20);
+    const dow = new Date(startRaw + 'T12:00:00').getDay();
+    const monOffset = dow === 0 ? 6 : dow - 1;
+    const start = addDays(startRaw, -monOffset);
+    return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  }, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   async function toggleFulfilled(order) {
     await fetch(`${BACKEND}/api/harvest/orders/${order.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fulfilled: !order.fulfilled }),
     });
     refetchAll();
@@ -578,30 +315,6 @@ export default function PickingLogPage() {
     refetchAll();
   }
 
-  const upcomingOrders = (orders || []).filter(o => !o.fulfilled && o.date >= TODAY);
-  const upcomingBinsNeeded  = upcomingOrders.reduce((s, o) => s + Number(o.bins_required), 0);
-  const binsInStorage    = Number(summary?.bins_in_storage    || 0); // < holdMin days — not packable yet
-  const binsReadyToPack  = Number(summary?.bins_ready_to_pack || 0); // ≥ holdMin days — packable
-  const binsTotalAvail   = Number(summary?.bins_total_available || 0); // all picked, not dispatched
-  const binsToday           = Number(summary?.bins_today            || 0);
-  const binsThisWeek        = Number(summary?.bins_this_week        || 0);
-  const binsGraded          = Number(summary?.bins_graded           || 0);
-  const binsAwaitingGrading = Number(summary?.bins_awaiting_grading || 0);
-  // Shortfall uses ALL available bins (in storage + ready) vs upcoming orders
-  const stockShortfall   = upcomingBinsNeeded - binsTotalAvail;
-  const nextOrder        = summary?.next_order;
-  const pickByDate       = nextOrder ? addDays(nextOrder.date, -holdMin) : null;
-  const daysToPickBy     = pickByDate ? daysAgo(pickByDate) * -1 : null;
-
-  // Build 6-week aligned calendar starting from Monday
-  const calendarCells = useMemo(() => {
-    const startRaw = addDays(TODAY, -20);
-    const dow = new Date(startRaw + 'T12:00:00').getDay();
-    const monOffset = dow === 0 ? 6 : dow - 1;
-    const start = addDays(startRaw, -monOffset);
-    return Array.from({ length: 42 }, (_, i) => addDays(start, i));
-  }, []);
-
   return (
     <div className="page" style={{ paddingBottom: '3rem' }}>
 
@@ -609,9 +322,13 @@ export default function PickingLogPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 className="page-title" style={{ marginBottom: 2 }}>🥑 Harvest Log</h1>
+          <h1 className="page-title" style={{ marginBottom: 2 }}>🥑 Picking Schedule</h1>
           <div style={{ fontSize: '0.85rem', color: '#5a6a5a' }}>
-            Track daily bin picks and manage your weekly order forecast
+            Picking deadlines based on order forecast · Bin data from AvoGrade
+            {currentSeason && <span style={{ marginLeft: 6, fontSize: '0.78rem', background: '#e8f5e8',
+              color: '#2d6a1f', borderRadius: 4, padding: '1px 7px', fontWeight: 600 }}>
+              {currentSeason.label}
+            </span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -645,12 +362,6 @@ export default function PickingLogPage() {
                 borderRadius: 20, background: '#e8f5e8', border: '1.5px solid #a8d8a8',
                 fontSize: '0.85rem', fontWeight: 700, color: '#11420A' }}>
                 📍 You're at <span style={{ color: '#2d6a1f' }}>{nearbyOrchard.name}</span>
-                <button onClick={() => { setSelectedDate(TODAY); setShowPickModal(true); }}
-                  style={{ marginLeft: 4, padding: '0.15rem 0.6rem', borderRadius: 12,
-                    background: '#2d6a1f', color: '#fff', border: 'none', cursor: 'pointer',
-                    fontSize: '0.78rem', fontWeight: 700 }}>
-                  + Log bins
-                </button>
               </div>
             ) : (
               <div style={{ padding: '0.4rem 0.9rem', borderRadius: 20,
@@ -661,24 +372,21 @@ export default function PickingLogPage() {
             )}
             <button onClick={stopWatching}
               style={{ fontSize: '0.78rem', color: '#aaa', background: 'none',
-                border: 'none', cursor: 'pointer', padding: '0 4px' }}>
-              Stop
-            </button>
+                border: 'none', cursor: 'pointer', padding: '0 4px' }}>Stop</button>
           </div>
         )}
-        {locationError && (
-          <div style={{ fontSize: '0.8rem', color: '#c0392b' }}>{locationError}</div>
-        )}
+        {locationError && <div style={{ fontSize: '0.8rem', color: '#c0392b' }}>{locationError}</div>}
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — live from AvoGrade */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <StatCard label="Today" value={fmtNum(binsToday)} unit="bins" />
-        <StatCard label="This Week" value={fmtNum(binsThisWeek)} unit="bins" />
-        <StatCard label={`In Storage (<${holdMin}d)`} value={fmtNum(binsInStorage)} unit="bins"
-          sub="Not yet at minimum hold" color="#e67e22" />
-        <StatCard label={`Ready to Pack (≥${holdMin}d)`} value={fmtNum(binsReadyToPack)} unit="bins"
-          sub="Awaiting grading / dispatch" color="#2980b9" />
+        <StatCard label="In Storage" value={fmtNum(binsInStorage)} unit="equiv"
+          sub={`${oldestBinAge != null ? `Oldest: ${oldestBinAge}d` : 'No bins in storage'}`}
+          color="#e67e22" />
+        <StatCard label="Graded" value={fmtNum(binsGraded)} unit="equiv"
+          sub="Awaiting dispatch" color="#16a085" />
+        <StatCard label="Season Total" value={fmtNum(binsSeason)} unit="equiv"
+          sub={currentSeason?.label} color="#2d6a1f" />
         <StatCard label="Upcoming Orders" value={fmtNum(upcomingBinsNeeded)} unit="bins"
           sub={upcomingOrders.length > 0 ? `${upcomingOrders.length} order${upcomingOrders.length !== 1 ? 's' : ''}` : 'No orders entered'}
           warn={stockShortfall > 0} color={stockShortfall > 0 ? '#c0392b' : '#2d6a1f'} />
@@ -703,11 +411,11 @@ export default function PickingLogPage() {
           {nextOrder.customer && ` — ${nextOrder.customer}`}
           {' · '}
           <span style={{ color: daysToPickBy !== null && daysToPickBy <= 2 ? '#c0392b' : '#2d6a1f', fontWeight: 600 }}>
-            Picking must start by {fmtDate(pickByDate)}
+            Pick by {fmtDate(pickByDate)}
             {daysToPickBy !== null && (
-              daysToPickBy > 0 ? ` (${daysToPickBy} day${daysToPickBy !== 1 ? 's' : ''} away)`
+              daysToPickBy > 0 ? ` (${daysToPickBy}d away)`
               : daysToPickBy === 0 ? ' (today!)'
-              : ` (${Math.abs(daysToPickBy)} day${Math.abs(daysToPickBy) !== 1 ? 's' : ''} overdue)`
+              : ` (${Math.abs(daysToPickBy)}d overdue)`
             )}
           </span>
         </div>
@@ -715,7 +423,7 @@ export default function PickingLogPage() {
 
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-        {/* Left: calendar + selected day */}
+        {/* Left: calendar + selected day detail */}
         <div style={{ flex: 1, minWidth: 320 }}>
           <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#11420A', margin: '0 0 0.6rem' }}>
@@ -725,11 +433,9 @@ export default function PickingLogPage() {
               fontSize: '0.73rem', color: '#5a6a5a', flexWrap: 'wrap' }}>
               <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#2d6a1f', marginRight:4 }} />Bins picked</span>
               <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#dbeafe', border:'1px solid #93c5fd', marginRight:4 }} />Order due</span>
-              <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:'50%', background:'#e67e22', marginRight:4 }} />In hold</span>
-              <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#16a085', marginRight:4 }} />Graded</span>
+              <span><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:'#fff3e0', border:'1px solid #fcd34d', marginRight:4 }} />Pick-by deadline</span>
             </div>
 
-            {/* Day-of-week headers */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:3 }}>
               {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
                 <div key={d} style={{ textAlign:'center', fontSize:'0.68rem',
@@ -741,13 +447,13 @@ export default function PickingLogPage() {
               {calendarCells.map(d => {
                 const total    = dailyTotals[d] || 0;
                 const order    = ordersMap[d];
-                const hasGrading = !!(gradingsByDate[d]?.length);
                 const isToday  = d === TODAY;
-                const isSel   = d === selectedDate;
+                const isSel    = d === selectedDate;
                 const isFuture = d > TODAY;
-                const isPast90 = d < from90;
-                const ago = daysAgo(d);
-                const inHold = total > 0 && ago >= 0 && ago < holdMin;
+                const ago      = daysAgo(d);
+                const inHold   = total > 0 && ago >= 0 && ago < holdMin;
+                // Is this a pick-by deadline for any order?
+                const isPickBy = (orders || []).some(o => !o.fulfilled && addDays(o.date, -holdMin) === d);
 
                 return (
                   <button key={d} onClick={() => setSelectedDate(d)}
@@ -756,9 +462,10 @@ export default function PickingLogPage() {
                       border: isSel ? '2.5px solid #11420A' : isToday ? '2px solid #2d6a1f' : '1px solid #eef2ee',
                       background: isSel ? '#11420A'
                         : order && !order.fulfilled ? '#dbeafe'
-                        : total > 0 ? (inHold ? '#fff3e0' : '#e8f5e8')
-                        : isFuture || isPast90 ? '#fafafa' : '#fff',
-                      color: isSel ? '#fff' : (isFuture || isPast90) ? '#ccc' : '#11420A',
+                        : isPickBy ? '#fff3e0'
+                        : total > 0 ? (inHold ? '#fef9e7' : '#e8f5e8')
+                        : isFuture ? '#fafafa' : '#fff',
+                      color: isSel ? '#fff' : isFuture ? '#ccc' : '#11420A',
                       cursor: 'pointer', display: 'flex', flexDirection: 'column',
                       alignItems: 'center', justifyContent: 'center',
                     }}>
@@ -777,10 +484,9 @@ export default function PickingLogPage() {
                         📦{fmtNum(order.bins_required)}
                       </span>
                     )}
-                    {hasGrading && (
-                      <span style={{ fontSize:'0.58rem', lineHeight:1,
-                        color: isSel ? '#a8f0e8' : '#16a085', fontWeight:700 }}>
-                        G
+                    {isPickBy && !total && (
+                      <span style={{ fontSize:'0.58rem', lineHeight:1, color: isSel ? '#ffe' : '#d4770a', fontWeight:700 }}>
+                        ⚑
                       </span>
                     )}
                   </button>
@@ -791,71 +497,64 @@ export default function PickingLogPage() {
 
           {/* Selected day detail */}
           <div className="card" style={{ padding: '1.25rem' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
-              marginBottom: '0.75rem' }}>
-              <div>
-                <div style={{ fontWeight:700, fontSize:'0.95rem', color:'#11420A' }}>
-                  {fmtDate(selectedDate)}
-                  {selectedDate === TODAY && <span style={{ marginLeft:6, fontSize:'0.75rem',
-                    background:'#2d6a1f', color:'#fff', borderRadius:4, padding:'1px 7px' }}>Today</span>}
-                </div>
-                {selectedEntries.length > 0 && (
-                  <div style={{ fontSize:'0.82rem', color:'#5a6a5a', marginTop:2 }}>
-                    {fmtNum(dailyTotals[selectedDate] || 0)} bins total
-                    {selectedEntries.length > 1 && ` across ${selectedEntries.length} orchards`}
-                  </div>
-                )}
-              </div>
-              {selectedDate <= TODAY && (
-                <button className="btn btn-primary" onClick={() => setShowPickModal(true)}
-                  style={{ fontSize:'0.85rem' }}>
-                  {selectedEntries.length > 0 ? '✎ Edit' : '+ Log Bins'}
-                </button>
-              )}
+            <div style={{ fontWeight:700, fontSize:'0.95rem', color:'#11420A', marginBottom: '0.6rem' }}>
+              {fmtLongDate(selectedDate)}
+              {selectedDate === TODAY && <span style={{ marginLeft:6, fontSize:'0.75rem',
+                background:'#2d6a1f', color:'#fff', borderRadius:4, padding:'1px 7px' }}>Today</span>}
             </div>
 
-            {/* Day entries */}
-            {selectedEntries.length === 0 ? (
-              <div style={{ color:'#bbb', fontSize:'0.85rem' }}>
-                {selectedDate > TODAY ? 'Future date.' : 'No bins logged yet — click + Log Bins.'}
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:'0.35rem' }}>
-                {selectedEntries.map(e => (
-                  <div key={e.id} style={{
+            {/* Bins picked this day (from AvoGrade) */}
+            {Object.keys(selectedDayByGrower).length > 0 ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:'0.35rem', marginBottom:'0.75rem' }}>
+                {Object.entries(selectedDayByGrower).map(([grower, info]) => (
+                  <div key={grower} style={{
                     display:'flex', justifyContent:'space-between', alignItems:'center',
                     padding:'0.5rem 0.7rem', background:'#f7fbf7',
                     borderRadius:8, border:'1px solid #d4e0d4',
                   }}>
                     <div>
-                      <div style={{ fontWeight:600, color:'#11420A', fontSize:'0.9rem' }}>
-                        {e.grower_name || 'General'}
-                      </div>
-                      {e.notes && <div style={{ fontSize:'0.76rem', color:'#888', marginTop:1 }}>{e.notes}</div>}
+                      <div style={{ fontWeight:600, color:'#11420A', fontSize:'0.9rem' }}>{grower}</div>
+                      <div style={{ fontSize:'0.76rem', color:'#888' }}>{info.variety}</div>
                     </div>
                     <div style={{ fontWeight:800, color:'#2d6a1f', fontSize:'1rem' }}>
-                      {fmtNum(e.bins_picked)}<span style={{ fontSize:'0.75rem', color:'#5a6a5a', marginLeft:3 }}>bins</span>
+                      {fmtNum(info.total)}<span style={{ fontSize:'0.75rem', color:'#5a6a5a', marginLeft:3 }}>equiv</span>
                     </div>
                   </div>
                 ))}
+                <div style={{ fontSize:'0.78rem', color:'#5a6a5a', textAlign:'right', marginTop:2 }}>
+                  Total: <strong style={{ color:'#2d6a1f' }}>{fmtNum(Object.values(selectedDayByGrower).reduce((s,v)=>s+v.total,0))} equiv</strong>
+                  {' · '}data from AvoGrade
+                </div>
+              </div>
+            ) : (
+              <div style={{ color:'#bbb', fontSize:'0.85rem', marginBottom:'0.5rem' }}>
+                {selectedDate > TODAY ? 'Future date.' : 'No bins recorded in AvoGrade for this day.'}
               </div>
             )}
 
+            {/* Order due on this day */}
             {ordersMap[selectedDate] && (
-              <div style={{ marginTop:'0.75rem', padding:'0.6rem 0.8rem',
-                background:'#f0f6ff', borderRadius:8, border:'1px solid #bde0ff', fontSize:'0.83rem' }}>
+              <div style={{ padding:'0.6rem 0.8rem', background:'#f0f6ff',
+                borderRadius:8, border:'1px solid #bde0ff', fontSize:'0.83rem' }}>
                 <strong style={{ color:'#2980b9' }}>📦 Order due:</strong>{' '}
                 {fmtNum(ordersMap[selectedDate].bins_required)} bins
                 {ordersMap[selectedDate].customer && ` — ${ordersMap[selectedDate].customer}`}
               </div>
             )}
+
+            {/* Pick-by deadline indicator */}
+            {(orders || []).filter(o => !o.fulfilled && addDays(o.date, -holdMin) === selectedDate).map(o => (
+              <div key={o.id} style={{ marginTop:'0.5rem', padding:'0.6rem 0.8rem', background:'#fff8e8',
+                borderRadius:8, border:'1px solid #fcd34d', fontSize:'0.83rem', color:'#92600a' }}>
+                <strong>⚑ Pick-by deadline</strong> — need {fmtNum(o.bins_required)} bins picked today
+                to be ready for dispatch on {fmtDate(o.date)}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Right: orders + recent picks */}
-        <div style={{ flex: 1, minWidth: 300, display:'flex', flexDirection:'column', gap:'1rem' }}>
-
-          {/* Order forecast */}
+        {/* Right: order forecast */}
+        <div style={{ flex: 1, minWidth: 300 }}>
           <div className="card" style={{ padding:'1.25rem' }}>
             <h2 style={{ fontSize:'0.95rem', fontWeight:700, color:'#11420A', margin:'0 0 0.75rem' }}>
               📦 Order Forecast
@@ -873,6 +572,7 @@ export default function PickingLogPage() {
                 {orders.map(o => {
                   const isPast  = o.date < TODAY;
                   const pickBy  = addDays(o.date, -holdMin);
+                  const pickByAgo = daysAgo(pickBy);
                   return (
                     <div key={o.id} style={{
                       display:'flex', alignItems:'flex-start', gap:'0.6rem',
@@ -883,25 +583,21 @@ export default function PickingLogPage() {
                     }}>
                       <input type="checkbox" checked={o.fulfilled}
                         onChange={() => toggleFulfilled(o)}
-                        style={{ marginTop:2, accentColor:'#2d6a1f', cursor:'pointer',
-                          width:15, height:15, flexShrink:0 }} />
+                        style={{ marginTop:2, accentColor:'#2d6a1f', cursor:'pointer', width:15, height:15, flexShrink:0 }} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ display:'flex', justifyContent:'space-between', gap:6 }}>
                           <span style={{ fontWeight:700, color:'#11420A', fontSize:'0.9rem' }}>
                             {fmtNum(o.bins_required)} bins
                           </span>
-                          <span style={{ fontSize:'0.77rem', color:'#5a6a5a' }}>
-                            dispatch {fmtDate(o.date)}
-                          </span>
+                          <span style={{ fontSize:'0.77rem', color:'#5a6a5a' }}>dispatch {fmtDate(o.date)}</span>
                         </div>
-                        {o.customer && (
-                          <div style={{ fontSize:'0.78rem', color:'#5a6a5a' }}>{o.customer}</div>
-                        )}
+                        {o.customer && <div style={{ fontSize:'0.78rem', color:'#5a6a5a' }}>{o.customer}</div>}
                         {!o.fulfilled && (
                           <div style={{ fontSize:'0.74rem', marginTop:2,
-                            color: daysAgo(pickBy) > 0 ? '#c0392b' : '#5a6a5a' }}>
+                            color: pickByAgo > 0 ? '#c0392b' : '#5a6a5a' }}>
                             Pick by: {fmtDate(pickBy)}
-                            {daysAgo(pickBy) === 0 && <strong style={{ color:'#c0392b' }}> (today!)</strong>}
+                            {pickByAgo === 0 && <strong style={{ color:'#c0392b' }}> (today!)</strong>}
+                            {pickByAgo > 0 && <strong style={{ color:'#c0392b' }}> ({pickByAgo}d overdue)</strong>}
                           </div>
                         )}
                         {o.notes && <div style={{ fontSize:'0.74rem', color:'#aaa' }}>{o.notes}</div>}
@@ -929,138 +625,8 @@ export default function PickingLogPage() {
               </div>
             )}
           </div>
-
-          {/* Grading log */}
-          <div className="card" style={{ padding:'1.25rem' }}>
-            <h2 style={{ fontSize:'0.95rem', fontWeight:700, color:'#11420A', margin:'0 0 0.75rem' }}>
-              🏷️ Grading Log
-            </h2>
-            <GradingForm growers={growers} onSaved={refetchAll} />
-
-            {/* Recent grading sessions */}
-            {(gradings || []).length > 0 && (
-              <div style={{ marginTop:'1rem', display:'flex', flexDirection:'column', gap:'0.35rem' }}>
-                {(gradings || []).slice(0, 10).map(g => (
-                  <div key={g.id} style={{
-                    display:'flex', alignItems:'center', gap:'0.6rem',
-                    padding:'0.5rem 0.75rem', borderRadius:8,
-                    background:'#f0faf8', border:'1px solid #c8e8e4',
-                  }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', gap:6 }}>
-                        <span style={{ fontWeight:700, color:'#11420A', fontSize:'0.88rem' }}>
-                          {g.grower_name || 'All growers'}
-                        </span>
-                        <span style={{ fontSize:'0.77rem', color:'#5a6a5a', whiteSpace:'nowrap' }}>
-                          {fmtDate(g.session_date)}
-                        </span>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:1 }}>
-                        <span style={{ fontWeight:800, color:'#16a085', fontSize:'0.95rem' }}>
-                          {fmtNum(g.bins_graded)}
-                          <span style={{ fontSize:'0.74rem', color:'#5a6a5a', marginLeft:3 }}>bins</span>
-                        </span>
-                        {g.notes && (
-                          <span style={{ fontSize:'0.74rem', color:'#888' }}>{g.notes}</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (!confirm('Remove this grading session?')) return;
-                        await fetch(`${BACKEND}/api/harvest/grading/${g.id}`, { method: 'DELETE' });
-                        refetchAll();
-                      }}
-                      style={{ background:'none', border:'none', cursor:'pointer',
-                        color:'#ddd', fontSize:'0.9rem', padding:'0 3px', transition:'color 0.15s',
-                        flexShrink:0 }}
-                      onMouseEnter={e => e.currentTarget.style.color='#e74c3c'}
-                      onMouseLeave={e => e.currentTarget.style.color='#ddd'}>
-                      🗑
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {(gradings || []).length === 0 && (
-              <div style={{ marginTop:'0.75rem', color:'#aaa', fontSize:'0.85rem' }}>
-                No grading sessions logged yet.
-              </div>
-            )}
-
-            <div style={{ marginTop:'0.9rem', fontSize:'0.76rem', color:'#999', fontStyle:'italic' }}>
-              AvoGrade will post here automatically once connected to the server.
-            </div>
-          </div>
-
-          {/* Recent picks summary */}
-          <div className="card" style={{ padding:'1.25rem' }}>
-            <h2 style={{ fontSize:'0.95rem', fontWeight:700, color:'#11420A', margin:'0 0 0.75rem' }}>
-              Recent Picks
-            </h2>
-            {Object.keys(picksByDate).length === 0 ? (
-              <div style={{ color:'#aaa', fontSize:'0.85rem' }}>No picks logged yet.</div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:'0.35rem' }}>
-                {Object.entries(picksByDate)
-                  .sort(([a],[b]) => b.localeCompare(a))
-                  .slice(0, 12)
-                  .map(([date, entries]) => {
-                    const total = entries.reduce((s, e) => s + Number(e.bins_picked), 0);
-                    const ago = daysAgo(date);
-                    const ready = ago >= holdMin;
-                    return (
-                      <div key={date} onClick={() => setSelectedDate(date)}
-                        style={{
-                          padding:'0.45rem 0.7rem', borderRadius:7, cursor:'pointer',
-                          background: selectedDate === date ? '#f0f7f0' : '#fafafa',
-                          border:`1px solid ${selectedDate === date ? '#c8e6c8' : '#eee'}`,
-                        }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                          <span style={{ fontWeight:600, color:'#11420A', fontSize:'0.88rem' }}>
-                            {fmtDate(date)}
-                          </span>
-                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                            <span style={{ fontSize:'0.7rem', padding:'1px 7px', borderRadius:10,
-                              fontWeight:600, background: ready ? '#e0f0ff' : '#fff3e0',
-                              color: ready ? '#2980b9' : '#e67e22' }}>
-                              {ready ? '✓ Ready' : `${holdMin - ago}d to go`}
-                            </span>
-                            <span style={{ fontWeight:800, color:'#2d6a1f', fontSize:'0.95rem' }}>
-                              {fmtNum(total)}
-                            </span>
-                          </div>
-                        </div>
-                        {entries.length > 1 && (
-                          <div style={{ fontSize:'0.74rem', color:'#888', marginTop:2 }}>
-                            {entries.map(e => `${e.grower_name || 'General'}: ${fmtNum(e.bins_picked)}`).join(' · ')}
-                          </div>
-                        )}
-                        {entries.length === 1 && entries[0].grower_name && (
-                          <div style={{ fontSize:'0.74rem', color:'#888', marginTop:1 }}>
-                            {entries[0].grower_name}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
         </div>
       </div>
-
-      {/* Day pick modal */}
-      {showPickModal && (
-        <DayPickModal
-          date={selectedDate}
-          growers={growers}
-          existingEntries={selectedEntries}
-          defaultGrowerId={nearbyOrchard?.id}
-          onSaved={refetchAll}
-          onClose={() => setShowPickModal(false)}
-        />
-      )}
     </div>
   );
 }

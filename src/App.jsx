@@ -18,7 +18,7 @@ const TABS = [
   { id: 'picking-plan', label: 'Picking Plan' },
   { id: 'picking-log',  label: '🥑 Harvest' },
   { id: 'safety',       label: '⚠ Safety' },
-  { id: 'events',       label: 'Events' },
+  // { id: 'events', label: 'Events' },  // Hidden until GPS trackers are installed
   { id: 'growers',      label: 'Growers' },
   { id: 'vehicles',     label: 'Fleet' },
   { id: 'settings',     label: 'Settings' },
