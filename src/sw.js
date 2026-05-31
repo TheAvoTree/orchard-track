@@ -1,6 +1,11 @@
-import { precacheAndRoute } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+
+// Immediately take control when a new SW is available — stops stale cache issues
+self.addEventListener('install',  () => self.skipWaiting());
+self.addEventListener('activate', e  => e.waitUntil(clients.claim()));
 
 // Workbox injects the precache manifest here at build time
+cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 
 // ── Push notifications ────────────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/avograde/:path*",
+      "destination": "https://web-production-7c970.up.railway.app/api/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://orchard-track-backend-production.up.railway.app/api/:path*"
     },

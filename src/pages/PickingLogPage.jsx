@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
+const BACKEND  = import.meta.env.VITE_BACKEND_URL || '';
+// AvoGrade runs on a separate Railway backend — proxied via /avograde/ in vercel.json
+const AVOGRADE = import.meta.env.VITE_AVOGRADE_URL || '';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -181,7 +183,7 @@ export default function PickingLogPage() {
   // ── Data fetching ─────────────────────────────────────────────────────────
 
   // Current AvoGrade season
-  const { data: seasons } = useApi(`${BACKEND}/api/seasons`);
+  const { data: seasons } = useApi(`${AVOGRADE}/avograde/seasons`);
   const currentSeason = useMemo(() => {
     if (!seasons?.length) return null;
     return [...seasons].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))[0];
@@ -189,12 +191,12 @@ export default function PickingLogPage() {
 
   // AvoGrade bin stats (In Storage, Graded, Season Total)
   const { data: binStats, refetch: refetchBinStats } = useApi(
-    currentSeason ? `${BACKEND}/api/bins/stats?season_id=${currentSeason.id}` : null
+    currentSeason ? `${AVOGRADE}/avograde/bins/stats?season_id=${currentSeason.id}` : null
   );
 
   // AvoGrade individual bins (for calendar daily totals)
   const { data: bins, refetch: refetchBins } = useApi(
-    currentSeason ? `${BACKEND}/api/bins?season_id=${currentSeason.id}` : null
+    currentSeason ? `${AVOGRADE}/avograde/bins?season_id=${currentSeason.id}` : null
   );
 
   // OrchardTrack order forecasts (picking deadlines)
