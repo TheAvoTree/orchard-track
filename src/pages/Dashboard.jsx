@@ -642,12 +642,12 @@ export default function Dashboard() {
                 {polygonPaths ? (
                   polygonPaths.map((path, i) => (
                     <Polygon key={i} paths={path} options={shapeOptions}
-                      onClick={() => !editPins && setSelectedGrower(g)} />
+                      onClick={() => !editPins && flyToGrower(g)} />
                   ))
                 ) : (
                   <Circle center={{ lat: g.lat, lng: g.lng }} radius={radius}
                     options={shapeOptions}
-                    onClick={() => !editPins && setSelectedGrower(g)} />
+                    onClick={() => !editPins && flyToGrower(g)} />
                 )}
 
                 {!editPins && (
@@ -662,7 +662,7 @@ export default function Dashboard() {
                       strokeWeight: 1.5,
                       scale: 5,
                     }}
-                    onClick={() => setSelectedGrower(g)}
+                    onClick={() => flyToGrower(g)}
                   />
                 )}
 

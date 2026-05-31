@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
@@ -46,6 +46,30 @@ function daysAgo(dateStr) {
 
 const TODAY = toYMD(new Date());
 
+// ── Geofence helpers ──────────────────────────────────────────────────────────
+
+// Haversine distance in metres between two lat/lng points
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Returns the nearest grower within radiusM, or null
+function nearestInGeofence(lat, lng, growers, radiusM) {
+  let best = null, bestDist = Infinity;
+  for (const g of (growers || [])) {
+    if (!g.lat || !g.lng) continue;
+    const d = haversineM(lat, lng, g.lat, g.lng);
+    if (d <= radiusM && d < bestDist) { best = g; bestDist = d; }
+  }
+  return best;
+}
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, unit, sub, color = '#2d6a1f', warn }) {
@@ -70,7 +94,7 @@ function StatCard({ label, value, unit, sub, color = '#2d6a1f', warn }) {
 
 // ── Day pick log modal ────────────────────────────────────────────────────────
 
-function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
+function DayPickModal({ date, growers, existingEntries, defaultGrowerId, onSaved, onClose }) {
   // Build initial state from existing entries keyed by grower_id (null = no grower)
   const initEntries = () => {
     const map = {};
@@ -84,10 +108,11 @@ function DayPickModal({ date, growers, existingEntries, onSaved, onClose }) {
   const [entries, setEntries] = useState(initEntries);
   const [saving, setSaving] = useState(false);
 
-  // Active grower selections shown in the form
+  // Active grower selections — pre-fill with detected orchard if no existing entries
   const [selectedGrowers, setSelectedGrowers] = useState(() => {
     const keys = Object.keys(initEntries());
-    return keys.length > 0 ? keys : ['none'];
+    if (keys.length > 0) return keys;
+    return [defaultGrowerId ? String(defaultGrowerId) : 'none'];
   });
 
   function setField(key, field, val) {
@@ -456,6 +481,48 @@ export default function PickingLogPage() {
   const { data: growers } = useApi(`${BACKEND}/api/growers`);
   const { data: gradings, refetch: refetchGradings } =
     useApi(`${BACKEND}/api/harvest/grading?from=${from90}&to=${TODAY}`);
+  const { data: settings } = useApi(`${BACKEND}/api/settings`);
+
+  // ── Mobile geofence detection ─────────────────────────────────────────────
+  const [nearbyOrchard, setNearbyOrchard] = useState(null); // grower obj or null
+  const [locationError, setLocationError] = useState('');
+  const [locationWatching, setLocationWatching] = useState(false);
+  const watchIdRef = useRef(null);
+  const geofenceRadius = Number(settings?.geofence_radius_metres) || 200;
+
+  function startWatching() {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported on this device.');
+      return;
+    }
+    setLocationError('');
+    setLocationWatching(true);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      pos => {
+        const found = nearestInGeofence(
+          pos.coords.latitude, pos.coords.longitude, growers, geofenceRadius
+        );
+        setNearbyOrchard(found);
+      },
+      err => {
+        setLocationError(err.code === 1 ? 'Location permission denied.' : 'Unable to get location.');
+        setLocationWatching(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+    );
+  }
+
+  function stopWatching() {
+    if (watchIdRef.current != null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setLocationWatching(false);
+    setNearbyOrchard(null);
+  }
+
+  // Clean up watcher on unmount
+  useEffect(() => () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); }, []);
 
   function refetchAll() { refetchSummary(); refetchPicks(); refetchOrders(); refetchGradings(); }
 
@@ -560,6 +627,48 @@ export default function PickingLogPage() {
               border: '1.5px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }} />
           <span style={{ fontSize: '0.8rem', color: '#5a6a5a' }}>days</span>
         </div>
+      </div>
+
+      {/* Mobile geofence banner */}
+      <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        {!locationWatching ? (
+          <button onClick={startWatching}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.4rem 0.9rem',
+              borderRadius: 20, border: '1.5px solid #d4e0d4', background: '#fff',
+              cursor: 'pointer', fontSize: '0.83rem', fontWeight: 600, color: '#5a6a5a' }}>
+            📍 Detect my orchard
+          </button>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {nearbyOrchard ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.4rem 0.9rem',
+                borderRadius: 20, background: '#e8f5e8', border: '1.5px solid #a8d8a8',
+                fontSize: '0.85rem', fontWeight: 700, color: '#11420A' }}>
+                📍 You're at <span style={{ color: '#2d6a1f' }}>{nearbyOrchard.name}</span>
+                <button onClick={() => { setSelectedDate(TODAY); setShowPickModal(true); }}
+                  style={{ marginLeft: 4, padding: '0.15rem 0.6rem', borderRadius: 12,
+                    background: '#2d6a1f', color: '#fff', border: 'none', cursor: 'pointer',
+                    fontSize: '0.78rem', fontWeight: 700 }}>
+                  + Log bins
+                </button>
+              </div>
+            ) : (
+              <div style={{ padding: '0.4rem 0.9rem', borderRadius: 20,
+                background: '#f5f5f5', border: '1.5px solid #e0e0e0',
+                fontSize: '0.83rem', color: '#888' }}>
+                📡 Watching… no orchard nearby
+              </div>
+            )}
+            <button onClick={stopWatching}
+              style={{ fontSize: '0.78rem', color: '#aaa', background: 'none',
+                border: 'none', cursor: 'pointer', padding: '0 4px' }}>
+              Stop
+            </button>
+          </div>
+        )}
+        {locationError && (
+          <div style={{ fontSize: '0.8rem', color: '#c0392b' }}>{locationError}</div>
+        )}
       </div>
 
       {/* Stats row */}
@@ -947,6 +1056,7 @@ export default function PickingLogPage() {
           date={selectedDate}
           growers={growers}
           existingEntries={selectedEntries}
+          defaultGrowerId={nearbyOrchard?.id}
           onSaved={refetchAll}
           onClose={() => setShowPickModal(false)}
         />
