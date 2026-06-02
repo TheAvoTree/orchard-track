@@ -192,6 +192,11 @@ tr:hover td { background: #f9fbf9; }
     height: calc(100dvh - 90px);
   }
 
+  /* Hide events sidebar on mobile — map takes full width */
+  .map-sidebar {
+    display: none !important;
+  }
+
   /* Tighten page padding */
   .page { padding: 0.85rem; }
 }

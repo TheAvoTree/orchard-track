@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Dashboard from './pages/Dashboard.jsx';
 import GrowersPage from './pages/GrowersPage.jsx';
 import VehiclesPage from './pages/VehiclesPage.jsx';
@@ -26,6 +26,15 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState('dashboard');
+  const navRef = useRef(null);
+  const activeRef = useRef(null);
+
+  // Scroll the active tab button into view when tab changes
+  useEffect(() => {
+    if (activeRef.current && navRef.current) {
+      activeRef.current.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    }
+  }, [tab]);
 
   // Serve grower portal if URL matches /safety/<token>
   if (portalMatch) {
@@ -44,10 +53,11 @@ export default function App() {
           <span className="app-logo-sep" />
           <span className="app-logo-text">Orchard Track</span>
         </div>
-        <nav className="app-nav">
+        <nav className="app-nav" ref={navRef}>
           {TABS.map(t => (
             <button
               key={t.id}
+              ref={tab === t.id ? activeRef : null}
               className={`nav-btn${tab === t.id ? ' active' : ''}`}
               onClick={() => setTab(t.id)}
             >

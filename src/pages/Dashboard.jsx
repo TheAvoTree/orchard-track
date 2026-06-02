@@ -828,8 +828,8 @@ export default function Dashboard() {
         </GoogleMap>
       </div>
 
-      {/* Side panel */}
-      <aside style={{ width: 300, background: '#fff', borderLeft: '1px solid #d4e0d4',
+      {/* Side panel — hidden on mobile, visible on desktop */}
+      <aside className="map-sidebar" style={{ width: 300, background: '#fff', borderLeft: '1px solid #d4e0d4',
         display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '1rem', borderBottom: '1px solid #d4e0d4', fontWeight: 700,
           color: '#2d6a2d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
