@@ -1,8 +1,28 @@
 import { useState, useMemo } from 'react';
 import { useApi } from '../hooks/useApi.js';
+import { useSettings } from '../hooks/useSettings.js';
 
 const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function calcPickDate(dmResult, dmDate, dmRate, dmTarget) {
+  if (!dmResult || !dmDate || !dmRate || !dmTarget) return null;
+  const current = parseFloat(dmResult);
+  const target  = parseFloat(dmTarget);
+  const rate    = parseFloat(dmRate);
+  if (current >= target) return { date: new Date(dmDate), daysFromNow: 0 }; // already ready
+  const daysNeeded = Math.ceil((target - current) / rate);
+  const pick = new Date(dmDate);
+  pick.setDate(pick.getDate() + daysNeeded);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysFromNow = Math.ceil((pick - today) / 86400000);
+  return { date: pick, daysFromNow };
+}
+
+function fmtDate(d) {
+  return d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+}
 const VARIETIES = ['Hass', 'Gem', 'Reed'];
 
 const VARIETY_STYLE = {
@@ -25,6 +45,10 @@ const TD = { padding: '0.5rem 0.65rem', verticalAlign: 'middle' };
 const SEASON = '2026/27';
 
 export default function PickingPlanPage() {
+  const { settings } = useSettings();
+  const dmRate   = settings?.dm_rate_per_day ?? '0.071';
+  const dmTarget = settings?.dm_minimum      ?? '24';
+
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterVariety, setFilterVariety] = useState('all');
   const [importing, setImporting]   = useState(false);
@@ -246,6 +270,8 @@ export default function PickingPlanPage() {
                 <th style={TH}>Picking Month</th>
                 <th style={TH}>Status</th>
                 <th style={TH} title="Second pick needed">2nd</th>
+                <th style={TH} title="Dry matter % and collection date">DM %</th>
+                <th style={TH} title="Estimated safe-to-pick date based on dry matter">Safe to Pick</th>
                 <th style={TH}></th>
               </tr>
             </thead>
@@ -304,6 +330,23 @@ export default function PickingPlanPage() {
                       <input type="checkbox" checked={entry.second_pick_needed}
                         onChange={() => patch(entry.id, { second_pick_needed: !entry.second_pick_needed })}
                         style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#c0392b' }} />
+                    </td>
+                    {/* DM % + collection date */}
+                    <td style={{ ...TD, textAlign: 'center', minWidth: 90 }}>
+                      <DmCell
+                        dmResult={entry.dm_result}
+                        dmDate={entry.dm_date}
+                        onSave={(result, date) => patch(entry.id, { dm_result: result, dm_date: date })}
+                      />
+                    </td>
+                    {/* Safe to pick date */}
+                    <td style={{ ...TD, textAlign: 'center', minWidth: 100 }}>
+                      <SafeToPickCell
+                        dmResult={entry.dm_result}
+                        dmDate={entry.dm_date}
+                        dmRate={dmRate}
+                        dmTarget={dmTarget}
+                      />
                     </td>
                     <td style={{ ...TD, textAlign: 'center', width: 28 }}>
                       <DeleteButton onDelete={() => deleteEntry(entry.id)} />
@@ -367,6 +410,109 @@ function DeleteButton({ onDelete }) {
       onMouseLeave={e => { e.target.style.color = '#ccc'; e.target.style.borderColor = 'transparent'; }}>
       ×
     </button>
+  );
+}
+
+// Inline DM cell: shows "X.X% · dd Mon" when set, click to edit
+function DmCell({ dmResult, dmDate, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [result, setResult]   = useState('');
+  const [date, setDate]       = useState('');
+
+  function startEdit() {
+    setResult(dmResult != null ? String(dmResult) : '');
+    setDate(dmDate ? dmDate.slice(0, 10) : '');
+    setEditing(true);
+  }
+
+  function save() {
+    setEditing(false);
+    const r = parseFloat(result);
+    onSave(isNaN(r) ? null : r, date || null);
+  }
+
+  if (!editing) {
+    const hasData = dmResult != null;
+    return (
+      <span onClick={startEdit} title="Click to enter dry matter result"
+        style={{ cursor: 'pointer', fontSize: '0.78rem', display: 'block',
+          color: hasData ? '#1a5c1a' : '#bbb', lineHeight: 1.4 }}>
+        {hasData ? (
+          <>
+            <span style={{ fontWeight: 700 }}>{parseFloat(dmResult).toFixed(1)}%</span>
+            {dmDate && <span style={{ display: 'block', fontSize: '0.7rem', color: '#5a6a5a' }}>
+              {fmtDate(new Date(dmDate))}
+            </span>}
+          </>
+        ) : '—'}
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+      <input autoFocus type="number" step="0.1" min="10" max="30" value={result}
+        onChange={e => setResult(e.target.value)}
+        placeholder="DM %"
+        style={{ width: 60, padding: '0.15rem 0.25rem', border: '1px solid #2d6a2d',
+          borderRadius: 4, fontSize: '0.78rem', textAlign: 'center' }} />
+      <input type="date" value={date} onChange={e => setDate(e.target.value)}
+        style={{ width: 112, padding: '0.15rem 0.25rem', border: '1px solid #2d6a2d',
+          borderRadius: 4, fontSize: '0.75rem' }} />
+      <div style={{ display: 'flex', gap: 3 }}>
+        <button onClick={save}
+          style={{ padding: '1px 7px', borderRadius: 4, border: 'none',
+            background: '#2d6a2d', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+          ✓
+        </button>
+        <button onClick={() => setEditing(false)}
+          style={{ padding: '1px 7px', borderRadius: 4, border: '1px solid #ccc',
+            background: '#fff', color: '#666', cursor: 'pointer', fontSize: '0.72rem' }}>
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Read-only calculated safe-to-pick date
+function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
+  if (!dmResult || !dmDate) {
+    return <span style={{ color: '#bbb', fontSize: '0.78rem' }}>—</span>;
+  }
+
+  const pick = calcPickDate(dmResult, dmDate, dmRate, dmTarget);
+  if (!pick) return <span style={{ color: '#bbb', fontSize: '0.78rem' }}>—</span>;
+
+  const { date, daysFromNow } = pick;
+
+  // Already at or past target DM — ready now
+  if (parseFloat(dmResult) >= parseFloat(dmTarget)) {
+    return (
+      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#155724' }}>
+        Ready ✓
+      </span>
+    );
+  }
+
+  let color, bg, label;
+  if (daysFromNow <= 0) {
+    color = '#721c24'; bg = '#f8d7da'; label = 'Overdue';
+  } else if (daysFromNow <= 7) {
+    color = '#856404'; bg = '#fff3cd'; label = `${daysFromNow}d`;
+  } else {
+    color = '#155724'; bg = '#d4edda'; label = `${daysFromNow}d`;
+  }
+
+  return (
+    <span title={`${daysFromNow <= 0 ? 'Was ready' : 'Ready'} ${fmtDate(date)}`}
+      style={{ fontSize: '0.78rem', lineHeight: 1.4, display: 'block' }}>
+      <span style={{ fontWeight: 600, color }}>{fmtDate(date)}</span>
+      <span style={{ display: 'inline-block', marginLeft: 3, padding: '0px 5px',
+        borderRadius: 8, background: bg, color, fontSize: '0.7rem', fontWeight: 700 }}>
+        {label}
+      </span>
+    </span>
   );
 }
 

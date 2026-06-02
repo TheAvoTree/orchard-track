@@ -26,6 +26,12 @@ export default function SettingsPage() {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState(null);
 
+  // Dry matter settings
+  const [dmRate,    setDmRate]    = useState('0.071');
+  const [dmMin,     setDmMin]     = useState('24');
+  const [dmSaving,  setDmSaving]  = useState(false);
+  const [dmSaved,   setDmSaved]   = useState(false);
+
   const boundaryCount = growers?.filter(g => g.boundary).length ?? 0;
   const totalGeocoded = growers?.filter(g => g.lat).length ?? 0;
 
@@ -55,6 +61,8 @@ export default function SettingsPage() {
     if (settings.notify_on_departed !== undefined) setNotifyDeparted(settings.notify_on_departed !== 'false');
     if (settings.notify_from_name)  setFromName(settings.notify_from_name);
     if (settings.maintenance_alert_email !== undefined) setMaintenanceAlertEmail(settings.maintenance_alert_email);
+    if (settings.dm_rate_per_day !== undefined) setDmRate(settings.dm_rate_per_day);
+    if (settings.dm_minimum      !== undefined) setDmMin(settings.dm_minimum);
   }, [settings]);
 
   async function handleSave() {
@@ -78,6 +86,23 @@ export default function SettingsPage() {
     if (ok) { setEmailSaved(true); setTimeout(() => setEmailSaved(false), 3000); }
     else alert('Failed to save email settings.');
     setEmailSaving(false);
+  }
+
+  async function handleDmSave() {
+    setDmSaving(true); setDmSaved(false);
+    const rate = parseFloat(dmRate);
+    const min  = parseFloat(dmMin);
+    if (isNaN(rate) || rate <= 0 || isNaN(min) || min <= 0) {
+      alert('Please enter valid positive numbers for both DM fields.');
+      setDmSaving(false); return;
+    }
+    const ok = await saveSettings({
+      dm_rate_per_day: String(rate),
+      dm_minimum:      String(min),
+    });
+    if (ok) { setDmSaved(true); setTimeout(() => setDmSaved(false), 3000); }
+    else alert('Failed to save dry matter settings.');
+    setDmSaving(false);
   }
 
   async function handleTestEmail() {
@@ -303,6 +328,85 @@ export default function SettingsPage() {
           click <strong>Edit Pins</strong>, then drag any pin to the correct location.
           Neighbour address numbers are shown in edit mode to help with placement.
         </p>
+      </div>
+
+      {/* Dry Matter Calculator */}
+      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
+          🥑 Dry Matter Calculator
+        </h2>
+        <p style={{ color: '#5a6a5a', fontSize: '0.88rem', marginTop: 0 }}>
+          Used in the Picking Plan to calculate when each grower's fruit will reach
+          the minimum dry matter required for harvest. The safe-to-pick date is
+          calculated as: <em>collection date + (minimum − current DM) ÷ daily increase</em>.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#3a4a3a',
+              display: 'block', marginBottom: 4 }}>
+              Daily DM increase (% per day)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="number" step="0.001" min="0.01" max="1"
+                value={dmRate}
+                onChange={e => setDmRate(e.target.value)}
+                style={{ width: 90, padding: '0.38rem 0.5rem', borderRadius: 6,
+                  border: '1px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '0.82rem', color: '#5a6a5a' }}>% / day</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#8a9e8c', marginTop: 3 }}>
+              Default 0.071 for Hass. Adjust if your orchards show a different rate.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#3a4a3a',
+              display: 'block', marginBottom: 4 }}>
+              Minimum DM to pick (%)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="number" step="0.1" min="10" max="40"
+                value={dmMin}
+                onChange={e => setDmMin(e.target.value)}
+                style={{ width: 90, padding: '0.38rem 0.5rem', borderRadius: 6,
+                  border: '1px solid #d4e0d4', fontSize: '0.9rem', textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '0.82rem', color: '#5a6a5a' }}>%</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#8a9e8c', marginTop: 3 }}>
+              Default 24% for Hass. Gem and Reed may differ.
+            </div>
+          </div>
+
+          {/* Preview */}
+          {(() => {
+            const rate = parseFloat(dmRate);
+            const min  = parseFloat(dmMin);
+            if (!isNaN(rate) && rate > 0 && !isNaN(min) && min > 0) {
+              const exampleDm = min - 2;
+              const days = Math.ceil(2 / rate);
+              return (
+                <div style={{ padding: '0.6rem 0.9rem', background: '#f0f7f0', borderRadius: 6,
+                  fontSize: '0.82rem', color: '#2d6a2d' }}>
+                  <strong>Example:</strong> Fruit at {exampleDm.toFixed(1)}% DM today →
+                  ready in <strong>{days} days</strong> ({(min - exampleDm).toFixed(1)}% needed at {rate}/day)
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1.25rem' }}>
+          <button className="btn btn-primary" onClick={handleDmSave} disabled={dmSaving}>
+            {dmSaving ? 'Saving…' : 'Save'}
+          </button>
+          {dmSaved && <span style={{ color: '#2d6a2d', fontSize: '0.88rem', fontWeight: 600 }}>✓ Saved</span>}
+        </div>
       </div>
 
       {/* Push Notifications */}
