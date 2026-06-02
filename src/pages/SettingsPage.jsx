@@ -156,7 +156,10 @@ export default function SettingsPage() {
     <div className="page">
       <h1 className="page-title">Settings</h1>
 
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500 }}>
+      {/* Two-column grid on wide screens */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(440px, 1fr))', gap: '1rem', alignItems: 'start' }}>
+
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           Geofence Radius
         </h2>
@@ -204,7 +207,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           Special Locations
         </h2>
@@ -278,7 +281,7 @@ export default function SettingsPage() {
         </form>
       </div>
 
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           Property Boundary Geofencing
         </h2>
@@ -319,7 +322,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           Orchard Pin Positions
         </h2>
@@ -331,7 +334,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Dry Matter Calculator */}
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           🥑 Dry Matter Calculator
         </h2>
@@ -413,7 +416,7 @@ export default function SettingsPage() {
       <PushNotificationCard />
 
       {/* Email Notifications */}
-      <div className="card" style={{ padding: '1.5rem', maxWidth: 500, marginTop: '1rem' }}>
+      <div className="card" style={{ padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#2d6a2d', marginTop: 0 }}>
           Email Notifications
         </h2>
@@ -483,6 +486,8 @@ export default function SettingsPage() {
           {testResult?.skipped && <span style={{ color: '#856404', fontSize: '0.85rem' }}>Skipped: {testResult.skipped}</span>}
         </div>
       </div>
+
+      </div>{/* end two-column grid */}
     </div>
   );
 }

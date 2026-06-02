@@ -44,10 +44,40 @@ const TD = { padding: '0.5rem 0.65rem', verticalAlign: 'middle' };
 
 const SEASON = '2026/27';
 
+function SortTh({ col, label, sortCol, sortDir, onSort, style, title }) {
+  const active = sortCol === col;
+  const arrow  = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  return (
+    <th onClick={() => onSort(col)} title={title}
+      style={{ ...style, cursor: 'pointer', userSelect: 'none',
+        color: active ? '#11420a' : '#2d6a2d',
+        background: active ? '#dceedd' : undefined }}>
+      {label}{arrow}
+    </th>
+  );
+}
+
+// Sort column definitions
+const SORT_COLS = {
+  default:      'default',
+  dm:           'dm',
+  prev_bins:    'prev_bins',
+  month:        'month',
+  grower:       'grower',
+};
+
 export default function PickingPlanPage() {
   const { settings } = useSettings();
   const dmRate   = settings?.dm_rate_per_day ?? '0.071';
   const dmTarget = settings?.dm_minimum      ?? '24';
+
+  const [sortCol, setSortCol]   = useState(SORT_COLS.default);
+  const [sortDir, setSortDir]   = useState('asc');
+
+  function handleSort(col) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  }
 
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterVariety, setFilterVariety] = useState('all');
@@ -59,19 +89,64 @@ export default function PickingPlanPage() {
 
   const filtered = useMemo(() => {
     if (!entries) return [];
-    return entries
-      .filter(e => {
-        if (filterStatus !== 'all' && e.status !== filterStatus) return false;
-        if (filterVariety !== 'all' && e.variety !== filterVariety) return false;
-        return true;
-      })
-      .sort((a, b) => {
+    const base = entries.filter(e => {
+      if (filterStatus !== 'all' && e.status !== filterStatus) return false;
+      if (filterVariety !== 'all' && e.variety !== filterVariety) return false;
+      return true;
+    });
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    if (sortCol === SORT_COLS.dm) {
+      // Sort by days until ready — entries with DM data first
+      return [...base].sort((a, b) => {
+        const pa = calcPickDate(a.dm_result, a.dm_date, dmRate, dmTarget);
+        const pb = calcPickDate(b.dm_result, b.dm_date, dmRate, dmTarget);
+        if (!pa && !pb) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        if (!pa) return 1;   // no DM → push to end
+        if (!pb) return -1;
+        return (pa.daysFromNow - pb.daysFromNow) * dir;
+      });
+    }
+
+    if (sortCol === SORT_COLS.prev_bins) {
+      return [...base].sort((a, b) => {
+        const ba = Number(a.prev_season_bins) || 0;
+        const bb = Number(b.prev_season_bins) || 0;
+        return (bb - ba) * dir; // default desc (highest bins first)
+      });
+    }
+
+    if (sortCol === SORT_COLS.month) {
+      return [...base].sort((a, b) => {
         const ma = a.expected_month ?? 99;
         const mb = b.expected_month ?? 99;
-        if (ma !== mb) return ma - mb;
+        if (ma !== mb) return (ma - mb) * dir;
         return (a.sort_order ?? 0) - (b.sort_order ?? 0);
       });
-  }, [entries, filterStatus, filterVariety]);
+    }
+
+    if (sortCol === SORT_COLS.grower) {
+      return [...base].sort((a, b) => {
+        const na = (a.grower_name || a.grower_name_raw || '').toLowerCase();
+        const nb = (b.grower_name || b.grower_name_raw || '').toLowerCase();
+        return na < nb ? -dir : na > nb ? dir : 0;
+      });
+    }
+
+    // Default: entries with DM results bubble up (sorted by readiness), rest by month then sort_order
+    return [...base].sort((a, b) => {
+      const pa = calcPickDate(a.dm_result, a.dm_date, dmRate, dmTarget);
+      const pb = calcPickDate(b.dm_result, b.dm_date, dmRate, dmTarget);
+      if (pa && pb) return pa.daysFromNow - pb.daysFromNow;
+      if (pa)  return -1;  // has DM → float up
+      if (pb)  return 1;
+      const ma = a.expected_month ?? 99;
+      const mb = b.expected_month ?? 99;
+      if (ma !== mb) return ma - mb;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    });
+  }, [entries, filterStatus, filterVariety, sortCol, sortDir, dmRate, dmTarget]);
 
   const stats = useMemo(() => {
     if (!entries?.length) return null;
@@ -263,14 +338,14 @@ export default function PickingPlanPage() {
             <thead>
               <tr style={{ background: '#f5f9f5', borderBottom: '2px solid #d4e0d4' }}>
                 <th style={TH}>#</th>
-                <th style={{ ...TH, textAlign: 'left' }}>Grower</th>
+                <SortTh col={SORT_COLS.grower}   label="Grower"         sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={{ ...TH, textAlign: 'left' }} />
                 <th style={TH}>Variety</th>
-                {showPrevBins && <th style={TH}>25/26<br/>Bins</th>}
+                {showPrevBins && <SortTh col={SORT_COLS.prev_bins} label={<>25/26<br/>Bins</>} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={TH} title="Sort by previous season bins" />}
                 <th style={TH}>Bins</th>
-                <th style={TH}>Picking Month</th>
+                <SortTh col={SORT_COLS.month}    label="Picking Month"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={TH} />
                 <th style={TH}>Status</th>
                 <th style={TH} title="Second pick needed">2nd</th>
-                <th style={TH} title="Dry matter % and collection date">DM %</th>
+                <SortTh col={SORT_COLS.dm}       label="DM %"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={TH} title="Sort by days until ready to pick" />
                 <th style={TH} title="Estimated safe-to-pick date based on dry matter">Safe to Pick</th>
                 <th style={TH}></th>
               </tr>
