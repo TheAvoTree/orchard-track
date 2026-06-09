@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-export function useApi(url, deps = []) {
+export function useApi(url, { deps = [], pollMs = 0 } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const timerRef = useRef(null);
 
   const fetch_ = useCallback(async () => {
     if (!url) { setLoading(false); return; }
@@ -21,7 +22,13 @@ export function useApi(url, deps = []) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, ...deps]);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => {
+    fetch_();
+    if (pollMs > 0) {
+      timerRef.current = setInterval(fetch_, pollMs);
+      return () => clearInterval(timerRef.current);
+    }
+  }, [fetch_, pollMs]);
 
   return { data, loading, error, refetch: fetch_ };
 }

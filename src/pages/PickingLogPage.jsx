@@ -364,11 +364,13 @@ export default function PickingLogPage() {
   }, [seasons]);
 
   const { data: binStats } = useApi(
-    currentSeason ? `${AVOGRADE}/avograde/bins/stats?season_id=${currentSeason.id}` : null
+    currentSeason ? `${AVOGRADE}/avograde/bins/stats?season_id=${currentSeason.id}` : null,
+    { pollMs: 120000 }
   );
 
   const { data: bins } = useApi(
-    currentSeason ? `${AVOGRADE}/avograde/bins?season_id=${currentSeason.id}` : null
+    currentSeason ? `${AVOGRADE}/avograde/bins?season_id=${currentSeason.id}` : null,
+    { pollMs: 120000 }
   );
 
   const { data: growers } = useApi(`${BACKEND}/api/growers`);
@@ -399,9 +401,9 @@ export default function PickingLogPage() {
     return m;
   }, [selectedDayBins]);
 
-  const binsInStorage = Number(binStats?.in_storage || 0);
-  const binsGraded    = Number(binStats?.graded      || 0);
-  const binsSeason    = Number(binStats?.total_equiv  || 0);
+  const binsInStorage = Number(binStats?.in_storage_equiv || 0);
+  const binsGraded    = Number(binStats?.graded_equiv     || 0);
+  const binsSeason    = Number(binStats?.total_equiv      || 0);
 
   const oldestBinAge = useMemo(() => {
     const inStorage = (bins || []).filter(b => b.status === 'in-storage');
@@ -519,7 +521,7 @@ export default function PickingLogPage() {
           sub={oldestBinAge != null ? `Oldest: ${oldestBinAge}d` : 'No bins in storage'}
           color="#e67e22" />
         <StatCard label="Graded" value={fmtNum(binsGraded)} unit="equiv"
-          sub="Awaiting dispatch" color="#16a085" />
+          color="#16a085" />
         <StatCard label="Season Total" value={fmtNum(binsSeason)} unit="equiv"
           sub={currentSeason?.label} color="#2d6a1f" />
       </div>
