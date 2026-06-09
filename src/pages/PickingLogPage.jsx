@@ -363,18 +363,33 @@ export default function PickingLogPage() {
     return [...seasons].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))[0];
   }, [seasons]);
 
-  const { data: binStats } = useApi(
+  const { data: binStats, refetch: refetchStats } = useApi(
     currentSeason ? `${AVOGRADE}/avograde/bins/stats?season_id=${currentSeason.id}` : null,
     { pollMs: 120000 }
   );
 
-  const { data: bins } = useApi(
+  const { data: bins, refetch: refetchBins } = useApi(
     currentSeason ? `${AVOGRADE}/avograde/bins?season_id=${currentSeason.id}` : null,
+    { pollMs: 120000 }
+  );
+
+  const { data: orders, refetch: refetchOrders } = useApi(
+    `${BACKEND}/api/harvest/orders`,
     { pollMs: 120000 }
   );
 
   const { data: growers } = useApi(`${BACKEND}/api/growers`);
   const { data: settings } = useApi(`${BACKEND}/api/settings`);
+
+  // Track last refresh time
+  const [lastUpdated, setLastUpdated] = useState(null);
+  useEffect(() => { if (bins) setLastUpdated(new Date()); }, [bins]);
+
+  function handleRefresh() {
+    refetchBins();
+    refetchStats();
+    refetchOrders();
+  }
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -452,6 +467,16 @@ export default function PickingLogPage() {
     }
   }, [nearbyOrchard]);
 
+  // ── Orders by date ────────────────────────────────────────────────────────
+  const ordersByDate = useMemo(() => {
+    const m = {};
+    for (const o of (orders || [])) {
+      const d = toYMD(new Date(o.dispatch_date || o.date));
+      m[d] = o;
+    }
+    return m;
+  }, [orders]);
+
   // ── Calendar cells (6 weeks aligned to Monday) ───────────────────────────
   const calendarCells = useMemo(() => {
     const startRaw = addDays(TODAY, -20);
@@ -479,8 +504,19 @@ export default function PickingLogPage() {
                 {currentSeason.label}
               </span>
             )}
+            {lastUpdated && (
+              <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#aaa' }}>
+                Updated {lastUpdated.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </div>
         </div>
+        <button onClick={handleRefresh}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.38rem 0.9rem',
+            borderRadius: 8, border: '1.5px solid #d4e0d4', background: '#fff',
+            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
+          ↺ Refresh
+        </button>
       </div>
 
       {/* Mobile geofence banner */}
@@ -541,6 +577,11 @@ export default function PickingLogPage() {
                   background: '#2d6a1f', marginRight: 4 }} />
                 Bins picked
               </span>
+              <span>
+                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2,
+                  background: '#2563eb', marginRight: 4 }} />
+                Order due
+              </span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 3 }}>
@@ -552,23 +593,26 @@ export default function PickingLogPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
               {calendarCells.map(d => {
-                const total   = dailyTotals[d] || 0;
-                const isToday = d === TODAY;
-                const isSel   = d === selectedDate;
+                const total    = dailyTotals[d] || 0;
+                const order    = ordersByDate[d];
+                const isToday  = d === TODAY;
+                const isSel    = d === selectedDate;
                 const isFuture = d > TODAY;
-                const ago     = daysAgo(d);
-                const inHold  = total > 0 && ago >= 0 && ago < 7;
+                const ago      = daysAgo(d);
+                const inHold   = total > 0 && ago >= 0 && ago < 7;
 
                 return (
                   <button key={d} onClick={() => setSelectedDate(d)} style={{
-                    minHeight: 40, borderRadius: 6, padding: '3px 2px',
-                    border: isSel ? '2.5px solid #11420A' : isToday ? '2px solid #2d6a1f' : '1px solid #eef2ee',
+                    minHeight: 44, borderRadius: 6, padding: '3px 2px',
+                    border: isSel ? '2.5px solid #11420A'
+                      : order && !order.fulfilled ? '1.5px solid #93c5fd'
+                      : isToday ? '2px solid #2d6a1f' : '1px solid #eef2ee',
                     background: isSel ? '#11420A'
                       : total > 0 ? (inHold ? '#fef9e7' : '#e8f5e8')
                       : isFuture ? '#fafafa' : '#fff',
                     color: isSel ? '#fff' : isFuture ? '#ccc' : '#11420A',
                     cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
+                    alignItems: 'center', justifyContent: 'center', gap: 1,
                   }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: isToday ? 700 : 400, lineHeight: 1.2 }}>
                       {new Date(d + 'T12:00:00').getDate()}
@@ -577,6 +621,12 @@ export default function PickingLogPage() {
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, lineHeight: 1,
                         color: isSel ? '#c8f0c8' : inHold ? '#e67e22' : '#2d6a1f' }}>
                         {fmtNum(total)}
+                      </span>
+                    )}
+                    {order && !order.fulfilled && (
+                      <span style={{ fontSize: '0.58rem', fontWeight: 700, lineHeight: 1,
+                        color: isSel ? '#bfdbfe' : '#2563eb' }}>
+                        📦{fmtNum(order.bins_required)}
                       </span>
                     )}
                   </button>
@@ -597,6 +647,34 @@ export default function PickingLogPage() {
               )}
             </div>
 
+            {/* Order due on this day */}
+            {ordersByDate[selectedDate] && !ordersByDate[selectedDate].fulfilled && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.5rem 0.7rem', marginBottom: '0.5rem',
+                background: '#eff6ff', borderRadius: 8, border: '1.5px solid #93c5fd' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: '0.85rem' }}>
+                    📦 Order due
+                  </div>
+                  {ordersByDate[selectedDate].customer && (
+                    <div style={{ fontSize: '0.75rem', color: '#3b82f6' }}>
+                      {ordersByDate[selectedDate].customer}
+                    </div>
+                  )}
+                  {ordersByDate[selectedDate].notes && (
+                    <div style={{ fontSize: '0.73rem', color: '#6b7280', marginTop: 1 }}>
+                      {ordersByDate[selectedDate].notes}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontWeight: 800, color: '#1d4ed8', fontSize: '1rem', textAlign: 'right' }}>
+                  {fmtNum(ordersByDate[selectedDate].bins_required)}
+                  <span style={{ fontSize: '0.73rem', color: '#3b82f6', marginLeft: 3 }}>bins req.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Bins picked on this day */}
             {Object.keys(selectedDayByGrower).length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {Object.entries(selectedDayByGrower)
@@ -626,7 +704,7 @@ export default function PickingLogPage() {
               </div>
             ) : (
               <div style={{ color: '#bbb', fontSize: '0.85rem' }}>
-                {selectedDate > TODAY ? 'Future date.' : 'No bins recorded in AvoGrade for this day.'}
+                {selectedDate > TODAY ? 'No bins picked yet.' : 'No bins recorded in AvoGrade for this day.'}
               </div>
             )}
           </div>
