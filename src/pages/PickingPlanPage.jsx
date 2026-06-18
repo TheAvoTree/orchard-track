@@ -150,16 +150,20 @@ export default function PickingPlanPage() {
 
   const stats = useMemo(() => {
     if (!entries?.length) return null;
-    const totalBins      = entries.reduce((s, e) => s + (Number(e.estimated_bins)    || 0), 0);
+    const withEst        = entries.filter(e => e.estimated_bins != null);
+    const totalBins      = withEst.reduce((s, e) => s + Number(e.estimated_bins), 0);
     const prevTotalBins  = entries.reduce((s, e) => s + (Number(e.prev_season_bins)  || 0), 0);
+    const totalPicked    = entries.reduce((s, e) => s + (Number(e.bins_picked) || 0), 0);
     const byVariety = {};
     for (const v of VARIETIES) {
       byVariety[v] = entries.filter(e => e.variety === v).length;
     }
     return {
-      total:        entries.length,
+      total:          entries.length,
       totalBins,
+      estCount:       withEst.length,
       prevTotalBins,
+      totalPicked,
       firstPick:    entries.filter(e => e.status === 'first_pick').length,
       complete:     entries.filter(e => e.status === 'complete').length,
       secondNeeded: entries.filter(e => e.second_pick_needed && e.status !== 'complete').length,
@@ -258,7 +262,17 @@ export default function PickingPlanPage() {
               <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#2d6a2d' }}>
                 {Math.round(stats.totalBins).toLocaleString()}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>Total Bins</div>
+              <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>
+                Expected Bins ({stats.estCount}/{stats.total} orchards)
+              </div>
+            </div>
+          )}
+          {stats.totalPicked > 0 && (
+            <div className="card" style={{ padding: '0.6rem 1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#2d6a2d' }}>
+                {stats.totalPicked.toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>Bins Picked</div>
             </div>
           )}
           {(stats.firstPick > 0 || stats.complete > 0) && <>
@@ -342,6 +356,8 @@ export default function PickingPlanPage() {
                 <th style={TH}>Variety</th>
                 {showPrevBins && <SortTh col={SORT_COLS.prev_bins} label={<>25/26<br/>Bins</>} sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={TH} title="Sort by previous season bins" />}
                 <th style={TH}>Bins</th>
+                <th style={TH}>Picked</th>
+                <th style={{ ...TH, minWidth: 90 }}>Progress</th>
                 <SortTh col={SORT_COLS.month}    label="Picking Month"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} style={TH} />
                 <th style={TH}>Status</th>
                 <th style={TH} title="Second pick needed">2nd</th>
@@ -381,6 +397,13 @@ export default function PickingPlanPage() {
                     <td style={{ ...TD, textAlign: 'center' }}>
                       <InlineNumber value={entry.estimated_bins}
                         onSave={v => patch(entry.id, { estimated_bins: v })} />
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      <InlineNumber value={entry.bins_picked}
+                        onSave={v => patch(entry.id, { bins_picked: v })} />
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      <PickProgress picked={entry.bins_picked} estimated={entry.estimated_bins} />
                     </td>
                     <td style={{ ...TD, textAlign: 'center' }}>
                       <select value={entry.expected_month || ''}
@@ -588,6 +611,20 @@ function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
         {label}
       </span>
     </span>
+  );
+}
+
+function PickProgress({ picked, estimated }) {
+  if (!estimated) return <span style={{ color: '#ccc', fontSize: '0.75rem' }}>—</span>;
+  const pct = Math.min(100, Math.round(((picked || 0) / estimated) * 100));
+  const barColor = pct >= 100 ? '#28a745' : pct > 0 ? '#ffc107' : '#d4e0d4';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
+      <div style={{ width: 56, height: 7, borderRadius: 4, background: '#e8f5e8', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: barColor, transition: 'width 0.3s' }} />
+      </div>
+      <span style={{ fontSize: '0.72rem', color: '#5a6a5a', minWidth: 26 }}>{pct}%</span>
+    </div>
   );
 }
 
