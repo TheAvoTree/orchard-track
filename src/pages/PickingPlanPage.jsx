@@ -592,33 +592,58 @@ function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
 }
 
 function AddGrowerForm({ onAdded }) {
-  const [name, setName]         = useState('');
-  const [variety, setVariety]   = useState('Hass');
-  const [bins, setBins]         = useState('');
-  const [prevBins, setPrevBins] = useState('');
-  const [month, setMonth]       = useState('');
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState('');
+  const [name, setName]               = useState('');
+  const [selectedGrower, setSelected] = useState(null); // confirmed grower object
+  const [showSuggestions, setShow]    = useState(false);
+  const [variety, setVariety]         = useState('Hass');
+  const [bins, setBins]               = useState('');
+  const [prevBins, setPrevBins]       = useState('');
+  const [month, setMonth]             = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
 
   const { data: growers } = useApi('/api/growers');
+
+  const suggestions = useMemo(() => {
+    if (!growers || !name.trim() || selectedGrower) return [];
+    const q = name.toLowerCase();
+    return growers.filter(g => g.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [growers, name, selectedGrower]);
+
+  function handleNameChange(val) {
+    setName(val);
+    setSelected(null);
+    setShow(true);
+  }
+
+  function handleSelect(grower) {
+    setName(grower.name);
+    setSelected(grower);
+    setShow(false);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true); setError('');
 
-    const norm  = s => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-    const target = norm(name.trim());
-    const match  = growers?.find(g => {
-      const gn = norm(g.name);
-      return gn === target || gn.includes(target) || target.includes(gn);
-    });
+    // Use confirmed selection, or fall back to fuzzy match at submit time
+    let growerId = selectedGrower?.id ?? null;
+    if (!growerId && growers) {
+      const norm   = s => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+      const target = norm(name.trim());
+      const match  = growers.find(g => {
+        const gn = norm(g.name);
+        return gn === target || gn.includes(target) || target.includes(gn);
+      });
+      growerId = match?.id ?? null;
+    }
 
     try {
       const res = await fetch('/api/picking-plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          season: SEASON, grower_id: match?.id ?? null,
+          season: SEASON, grower_id: growerId,
           grower_name_raw:  name.trim(),
           variety:          variety || null,
           estimated_bins:   parseInt(bins) || null,
@@ -639,10 +664,41 @@ function AddGrowerForm({ onAdded }) {
       </div>
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: '2 1 180px' }}>
+          <div style={{ flex: '2 1 180px', position: 'relative' }}>
             <label style={{ fontSize: '0.75rem', color: '#5a6a5a', display: 'block', marginBottom: 2 }}>Grower Name *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Andrew Clow" required
-              style={{ width: '100%', padding: '0.38rem 0.55rem', borderRadius: 6, border: '1px solid #d4e0d4', fontSize: '0.88rem', boxSizing: 'border-box' }} />
+            <input
+              type="text" value={name} required
+              onChange={e => handleNameChange(e.target.value)}
+              onFocus={() => setShow(true)}
+              onBlur={() => setTimeout(() => setShow(false), 150)}
+              placeholder="Start typing a grower name…"
+              autoComplete="off"
+              style={{
+                width: '100%', padding: '0.38rem 0.55rem', borderRadius: 6, fontSize: '0.88rem',
+                boxSizing: 'border-box',
+                border: `1px solid ${selectedGrower ? '#2d6a2d' : '#d4e0d4'}`,
+              }}
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                background: '#fff', border: '1px solid #d4e0d4', borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: 2, overflow: 'hidden',
+              }}>
+                {suggestions.map(g => (
+                  <div
+                    key={g.id}
+                    onMouseDown={() => handleSelect(g)}
+                    style={{ padding: '0.4rem 0.65rem', cursor: 'pointer', borderBottom: '1px solid #f0f5f0' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f0f8f0'}
+                    onMouseLeave={e => e.currentTarget.style.background = ''}
+                  >
+                    <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{g.name}</div>
+                    {g.address && <div style={{ fontSize: '0.74rem', color: '#888' }}>{g.address}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ flex: '1 1 90px' }}>
             <label style={{ fontSize: '0.75rem', color: '#5a6a5a', display: 'block', marginBottom: 2 }}>Variety</label>
