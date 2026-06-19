@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 
 const BACKEND  = import.meta.env.VITE_BACKEND_URL || '';
-const AVOGRADE = import.meta.env.VITE_AVOGRADE_URL || '';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -341,7 +340,7 @@ function BinLogSearch({ bins, currentSeason }) {
         <div style={{ color: '#bbb', fontSize: '0.85rem', padding: '1rem 0' }}>
           {growerQuery
             ? `No bins found for "${growerQuery}" in this period.`
-            : 'No bins recorded in AvoGrade for this period.'}
+            : 'No bins recorded for this period. Use "Sync from AvoGrade" to import data.'}
         </div>
       ) : (
         <div style={{ color: '#bbb', fontSize: '0.85rem', padding: '1rem 0' }}>Loading…</div>
@@ -357,21 +356,42 @@ export default function PickingLogPage() {
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
-  const { data: seasons } = useApi(`${AVOGRADE}/avograde/seasons`);
+  const { data: seasons } = useApi(`${BACKEND}/api/harvest/bin-log/seasons`);
   const currentSeason = useMemo(() => {
     if (!seasons?.length) return null;
     return [...seasons].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))[0];
   }, [seasons]);
 
   const { data: binStats, refetch: refetchStats } = useApi(
-    currentSeason ? `${AVOGRADE}/avograde/bins/stats?season_id=${currentSeason.id}` : null,
+    currentSeason
+      ? `${BACKEND}/api/harvest/bin-log/stats?season_id=${currentSeason.id}`
+      : `${BACKEND}/api/harvest/bin-log/stats`,
     { pollMs: 120000 }
   );
 
   const { data: bins, refetch: refetchBins } = useApi(
-    currentSeason ? `${AVOGRADE}/avograde/bins?season_id=${currentSeason.id}` : null,
+    currentSeason
+      ? `${BACKEND}/api/harvest/bin-log?season_id=${currentSeason.id}`
+      : `${BACKEND}/api/harvest/bin-log`,
     { pollMs: 120000 }
   );
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  async function handleSync() {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const r = await fetch(`${BACKEND}/api/harvest/bin-log/sync`, { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Sync failed');
+      setSyncMsg(`Synced ${d.imported} bins, ${d.seasons} seasons`);
+      refetchBins(); refetchStats();
+    } catch (e) {
+      setSyncMsg(`Error: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const { data: orders, refetch: refetchOrders } = useApi(
     `${BACKEND}/api/harvest/orders`,
@@ -496,27 +516,35 @@ export default function PickingLogPage() {
         marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 className="page-title" style={{ marginBottom: 2 }}>🥑 Picking Schedule</h1>
-          <div style={{ fontSize: '0.85rem', color: '#5a6a5a' }}>
-            Bin data from AvoGrade
+          <div style={{ fontSize: '0.85rem', color: '#5a6a5a', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {currentSeason && (
-              <span style={{ marginLeft: 6, fontSize: '0.78rem', background: '#e8f5e8',
+              <span style={{ fontSize: '0.78rem', background: '#e8f5e8',
                 color: '#2d6a1f', borderRadius: 4, padding: '1px 7px', fontWeight: 600 }}>
                 {currentSeason.label}
               </span>
             )}
             {lastUpdated && (
-              <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#aaa' }}>
+              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
                 Updated {lastUpdated.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
+            {syncMsg && <span style={{ fontSize: '0.75rem', color: syncMsg.startsWith('Error') ? '#c0392b' : '#2d6a1f' }}>{syncMsg}</span>}
           </div>
         </div>
-        <button onClick={handleRefresh}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.38rem 0.9rem',
-            borderRadius: 8, border: '1.5px solid #d4e0d4', background: '#fff',
-            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
-          ↺ Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={handleRefresh}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.38rem 0.9rem',
+              borderRadius: 8, border: '1.5px solid #d4e0d4', background: '#fff',
+              cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
+            ↺ Refresh
+          </button>
+          <button onClick={handleSync} disabled={syncing}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.38rem 0.9rem',
+              borderRadius: 8, border: '1.5px solid #a8d8a8', background: syncing ? '#e8f5e8' : '#f0faf0',
+              cursor: syncing ? 'default' : 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
+            {syncing ? '⟳ Syncing…' : '⇅ Sync from AvoGrade'}
+          </button>
+        </div>
       </div>
 
       {/* Mobile geofence banner */}
@@ -675,36 +703,49 @@ export default function PickingLogPage() {
             )}
 
             {/* Bins picked on this day */}
-            {Object.keys(selectedDayByGrower).length > 0 ? (
+            {selectedDayBins.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {Object.entries(selectedDayByGrower)
-                  .sort((a, b) => b[1].total - a[1].total)
-                  .map(([grower, info]) => (
-                    <div key={grower} style={{
+                {selectedDayBins
+                  .slice()
+                  .sort((a, b) => Number(b.bin_equivalent) - Number(a.bin_equivalent))
+                  .map(b => (
+                    <div key={b.id} style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '0.5rem 0.7rem', background: '#f7fbf7',
                       borderRadius: 8, border: '1px solid #d4e0d4',
                     }}>
                       <div>
-                        <div style={{ fontWeight: 600, color: '#11420A', fontSize: '0.9rem' }}>{grower}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#888' }}>{info.variety}</div>
+                        <div style={{ fontWeight: 600, color: '#11420A', fontSize: '0.9rem' }}>{b.grower}</div>
+                        <div style={{ fontSize: '0.76rem', color: '#888' }}>{b.variety}</div>
                       </div>
-                      <div style={{ fontWeight: 800, color: '#2d6a1f', fontSize: '1rem' }}>
-                        {fmtNum(info.total)}
-                        <span style={{ fontSize: '0.75rem', color: '#5a6a5a', marginLeft: 3 }}>equiv</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ fontWeight: 800, color: '#2d6a1f', fontSize: '1rem', textAlign: 'right' }}>
+                          {fmtNum(b.bin_equivalent)}
+                          <span style={{ fontSize: '0.75rem', color: '#5a6a5a', marginLeft: 3 }}>equiv</span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Delete ${b.grower} ${fmtNum(b.bin_equivalent)} bins on ${selectedDate}?`)) return;
+                            await fetch(`${BACKEND}/api/harvest/bin-log/${b.id}`, { method: 'DELETE' });
+                            refetchBins(); refetchStats();
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer',
+                            color: '#ccc', fontSize: '1rem', lineHeight: 1, padding: '2px 4px' }}
+                          title="Delete this entry">
+                          ×
+                        </button>
                       </div>
                     </div>
                   ))}
                 <div style={{ fontSize: '0.78rem', color: '#5a6a5a', textAlign: 'right', marginTop: 2 }}>
                   Total: <strong style={{ color: '#2d6a1f' }}>
-                    {fmtNum(Object.values(selectedDayByGrower).reduce((s, v) => s + v.total, 0))} equiv
+                    {fmtNum(selectedDayBins.reduce((s, b) => s + Number(b.bin_equivalent), 0))} equiv
                   </strong>
-                  {' · '}data from AvoGrade
                 </div>
               </div>
             ) : (
               <div style={{ color: '#bbb', fontSize: '0.85rem' }}>
-                {selectedDate > TODAY ? 'No bins picked yet.' : 'No bins recorded in AvoGrade for this day.'}
+                {selectedDate > TODAY ? 'No bins picked yet.' : 'No bins recorded for this day.'}
               </div>
             )}
           </div>
