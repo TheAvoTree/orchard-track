@@ -178,6 +178,23 @@ export default function PickingPlanPage() {
     complete:   filtered.filter(e => e.status === 'complete').length,
   }), [filtered]);
 
+  const [syncing, setSyncing] = useState(false);
+  async function handleBinLogSync() {
+    setSyncing(true); setImportMsg(null);
+    try {
+      const res = await fetch(`/api/picking-plan/apply-bin-log?season=${encodeURIComponent(SEASON)}`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) setImportMsg({ error: data.error || 'Sync failed' });
+      else {
+        setImportMsg({ ok: `Bin log synced · ${data.updated} rows updated` });
+        refetch();
+      }
+    } catch (e) { setImportMsg({ error: e.message }); }
+    setSyncing(false);
+  }
+
   async function handleImport() {
     setImporting(true); setImportMsg(null);
     try {
@@ -226,6 +243,10 @@ export default function PickingPlanPage() {
               {showAdd ? 'Cancel' : '+ Add Grower'}
             </button>
           )}
+          <button className="btn" onClick={handleBinLogSync} disabled={syncing}
+            style={{ fontSize: '0.85rem', borderColor: '#a8d8a8', color: '#2d6a1f' }}>
+            {syncing ? '⟳ Syncing…' : '⇅ Sync Bin Log'}
+          </button>
           <button className="btn btn-primary" onClick={handleImport} disabled={importing}>
             {importing ? 'Syncing…' : entries?.length ? 'Re-sync 2026/27' : 'Import 2026/27 Data'}
           </button>

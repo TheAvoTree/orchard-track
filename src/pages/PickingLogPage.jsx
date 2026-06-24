@@ -384,7 +384,7 @@ export default function PickingLogPage() {
       const r = await fetch(`${BACKEND}/api/harvest/bin-log/sync`, { method: 'POST' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Sync failed');
-      setSyncMsg(`Synced ${d.imported} bins, ${d.seasons} seasons`);
+      setSyncMsg(`Synced ${d.imported} bins · ${d.planUpdated ?? 0} plan rows updated`);
       refetchBins(); refetchStats();
     } catch (e) {
       setSyncMsg(`Error: ${e.message}`);
