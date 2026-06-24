@@ -154,6 +154,7 @@ export default function PickingPlanPage() {
     const totalBins      = withEst.reduce((s, e) => s + Number(e.estimated_bins), 0);
     const prevTotalBins  = entries.reduce((s, e) => s + (Number(e.prev_season_bins)  || 0), 0);
     const totalPicked    = entries.reduce((s, e) => s + (Number(e.bins_picked) || 0), 0);
+    const binsRemaining  = Math.max(0, totalBins - totalPicked);
     const byVariety = {};
     for (const v of VARIETIES) {
       byVariety[v] = entries.filter(e => e.variety === v).length;
@@ -164,6 +165,7 @@ export default function PickingPlanPage() {
       estCount:       withEst.length,
       prevTotalBins,
       totalPicked,
+      binsRemaining,
       firstPick:    entries.filter(e => e.status === 'first_pick').length,
       complete:     entries.filter(e => e.status === 'complete').length,
       secondNeeded: entries.filter(e => e.second_pick_needed && e.status !== 'complete').length,
@@ -294,6 +296,22 @@ export default function PickingPlanPage() {
                 {stats.totalPicked.toLocaleString()}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>Bins Picked</div>
+            </div>
+          )}
+          {stats.binsRemaining > 0 && (
+            <div className="card" style={{ padding: '0.6rem 1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#e67e22' }}>
+                {Math.round(stats.binsRemaining).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>Bins Remaining</div>
+            </div>
+          )}
+          {stats.prevTotalBins > 0 && (
+            <div className="card" style={{ padding: '0.6rem 1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#5a6a5a' }}>
+                {Math.round(stats.prevTotalBins).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#5a6a5a' }}>25/26 Season</div>
             </div>
           )}
           {(stats.firstPick > 0 || stats.complete > 0) && <>
