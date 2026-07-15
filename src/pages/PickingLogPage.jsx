@@ -525,7 +525,7 @@ export default function PickingLogPage() {
             )}
             {lastUpdated && (
               <span style={{ fontSize: '0.75rem', color: '#aaa' }}>
-                Updated {lastUpdated.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
+                Loaded {lastUpdated.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })} · auto-syncs every 2h
               </span>
             )}
             {syncMsg && <span style={{ fontSize: '0.75rem', color: syncMsg.startsWith('Error') ? '#c0392b' : '#2d6a1f' }}>{syncMsg}</span>}
@@ -704,40 +704,71 @@ export default function PickingLogPage() {
 
             {/* Bins picked on this day */}
             {selectedDayBins.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 {selectedDayBins
                   .slice()
-                  .sort((a, b) => Number(b.bin_equivalent) - Number(a.bin_equivalent))
-                  .map(b => (
-                    <div key={b.id} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '0.5rem 0.7rem', background: '#f7fbf7',
-                      borderRadius: 8, border: '1px solid #d4e0d4',
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#11420A', fontSize: '0.9rem' }}>{b.grower}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#888' }}>{b.variety}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ fontWeight: 800, color: '#2d6a1f', fontSize: '1rem', textAlign: 'right' }}>
-                          {fmtNum(b.bin_equivalent)}
-                          <span style={{ fontSize: '0.75rem', color: '#5a6a5a', marginLeft: 3 }}>equiv</span>
+                  .sort((a, b) => a.grower?.localeCompare(b.grower))
+                  .map(b => {
+                    const isLarge  = b.bin_type === 'large';
+                    const isMedium = b.bin_type === 'medium';
+                    return (
+                      <div key={b.id} style={{
+                        padding: '0.45rem 0.7rem', background: '#f7fbf7',
+                        borderRadius: 8, border: '1px solid #d4e0d4',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 600, color: '#11420A', fontSize: '0.88rem' }}>{b.grower}</span>
+                              {b.grower_picked && (
+                                <span style={{ fontSize: '0.65rem', background: '#e8f5e8', color: '#2d6a1f',
+                                  border: '1px solid #a8d8a8', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>
+                                  GP
+                                </span>
+                              )}
+                              {b.bin_type && (
+                                <span style={{ fontSize: '0.65rem', borderRadius: 4, padding: '1px 5px', fontWeight: 600,
+                                  background: isLarge ? '#e8ecf8' : isMedium ? '#fff8e1' : '#f5f5f5',
+                                  color: isLarge ? '#1a3a8c' : isMedium ? '#7a5500' : '#666',
+                                  border: `1px solid ${isLarge ? '#8899dd' : isMedium ? '#ffc947' : '#ddd'}` }}>
+                                  {b.bin_type}
+                                </span>
+                              )}
+                              {b.overfull && (
+                                <span style={{ fontSize: '0.65rem', background: '#fff3cd', color: '#856404',
+                                  border: '1px solid #ffc107', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>
+                                  overfull
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#888', marginTop: 1 }}>
+                              {[b.variety, b.kpin ? `KPIN ${b.kpin}` : null, b.notes].filter(Boolean).join(' · ')}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem' }}>
+                            <div style={{ fontWeight: 800, color: b.status === 'graded' ? '#16a085' : '#e67e22',
+                              fontSize: '0.95rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {fmtNum(b.bin_equivalent)}
+                              <span style={{ fontSize: '0.7rem', color: '#5a6a5a', marginLeft: 2 }}>eq</span>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete ${b.grower} ${fmtNum(b.bin_equivalent)} equiv on ${selectedDate}?`)) return;
+                                await fetch(`${BACKEND}/api/harvest/bin-log/${b.id}`, { method: 'DELETE' });
+                                refetchBins(); refetchStats();
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                color: '#ddd', fontSize: '1rem', lineHeight: 1, padding: '2px 4px' }}
+                              title="Delete this entry">
+                              ×
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Delete ${b.grower} ${fmtNum(b.bin_equivalent)} bins on ${selectedDate}?`)) return;
-                            await fetch(`${BACKEND}/api/harvest/bin-log/${b.id}`, { method: 'DELETE' });
-                            refetchBins(); refetchStats();
-                          }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer',
-                            color: '#ccc', fontSize: '1rem', lineHeight: 1, padding: '2px 4px' }}
-                          title="Delete this entry">
-                          ×
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 <div style={{ fontSize: '0.78rem', color: '#5a6a5a', textAlign: 'right', marginTop: 2 }}>
+                  {selectedDayBins.length} bin{selectedDayBins.length !== 1 ? 's' : ''} ·
                   Total: <strong style={{ color: '#2d6a1f' }}>
                     {fmtNum(selectedDayBins.reduce((s, b) => s + Number(b.bin_equivalent), 0))} equiv
                   </strong>
