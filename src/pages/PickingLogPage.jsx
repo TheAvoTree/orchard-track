@@ -384,7 +384,10 @@ export default function PickingLogPage() {
       const r = await fetch(`${BACKEND}/api/harvest/bin-log/sync`, { method: 'POST' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Sync failed');
-      setSyncMsg(`Synced ${d.imported} bins · ${d.planUpdated ?? 0} plan rows updated`);
+      const parts = [`Synced ${d.imported} bins`];
+      if (d.deleted > 0) parts.push(`${d.deleted} removed`);
+      if ((d.planUpdated ?? 0) > 0) parts.push(`${d.planUpdated} plan rows updated`);
+      setSyncMsg(parts.join(' · '));
       refetchBins(); refetchStats();
     } catch (e) {
       setSyncMsg(`Error: ${e.message}`);
