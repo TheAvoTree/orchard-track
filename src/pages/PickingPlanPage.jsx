@@ -84,6 +84,8 @@ export default function PickingPlanPage() {
   const [importing, setImporting]   = useState(false);
   const [importMsg, setImportMsg]   = useState(null);
   const [showAdd, setShowAdd]       = useState(false);
+  const [editingNameId, setEditingNameId] = useState(null);
+  const [editingNameVal, setEditingNameVal] = useState('');
 
   const { data: entries, refetch } = useApi(`/api/picking-plan?season=${encodeURIComponent(SEASON)}`);
   const { data: binLogStats }      = useApi('/api/harvest/bin-log/stats?season_id=1');
@@ -417,9 +419,42 @@ export default function PickingPlanPage() {
                       {entry.sort_order}
                     </td>
                     <td style={{ ...TD, fontWeight: 500 }}>
-                      {entry.grower_name || entry.grower_name_raw}
-                      {!entry.grower_id && (
-                        <span style={{ fontSize: '0.68rem', color: '#f0a500', marginLeft: 4 }}>unmatched</span>
+                      {editingNameId === entry.id ? (
+                        <input
+                          autoFocus
+                          value={editingNameVal}
+                          onChange={e => setEditingNameVal(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              patch(entry.id, { grower_name_raw: editingNameVal.trim() });
+                              setEditingNameId(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingNameId(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (editingNameVal.trim() && editingNameVal.trim() !== entry.grower_name_raw) {
+                              patch(entry.id, { grower_name_raw: editingNameVal.trim() });
+                            }
+                            setEditingNameId(null);
+                          }}
+                          style={{ border: '1px solid #4a9a4a', borderRadius: 4, padding: '0.2rem 0.4rem',
+                            fontSize: '0.86rem', width: '100%', minWidth: 180 }}
+                        />
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span>{entry.grower_name || entry.grower_name_raw}</span>
+                          {!entry.grower_id && (
+                            <span style={{ fontSize: '0.68rem', color: '#f0a500' }}>unmatched</span>
+                          )}
+                          <button
+                            onClick={() => { setEditingNameId(entry.id); setEditingNameVal(entry.grower_name_raw || ''); }}
+                            title="Edit grower name"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa',
+                              padding: '0 2px', fontSize: '0.75rem', lineHeight: 1, opacity: 0.6 }}>
+                            ✏️
+                          </button>
+                        </span>
                       )}
                     </td>
                     <td style={{ ...TD, textAlign: 'center' }}>
