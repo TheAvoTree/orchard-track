@@ -86,6 +86,7 @@ export default function PickingPlanPage() {
   const [showAdd, setShowAdd]       = useState(false);
 
   const { data: entries, refetch } = useApi(`/api/picking-plan?season=${encodeURIComponent(SEASON)}`);
+  const { data: binLogStats }      = useApi('/api/harvest/bin-log/stats?season_id=1');
 
   const filtered = useMemo(() => {
     if (!entries) return [];
@@ -153,7 +154,8 @@ export default function PickingPlanPage() {
     const withEst        = entries.filter(e => e.estimated_bins != null);
     const totalBins      = withEst.reduce((s, e) => s + Number(e.estimated_bins), 0);
     const prevTotalBins  = entries.reduce((s, e) => s + (Number(e.prev_season_bins)  || 0), 0);
-    const totalPicked    = entries.reduce((s, e) => s + (Number(e.bins_picked) || 0), 0);
+    // Use bin_log season total so this always matches the Schedule tab
+    const totalPicked    = Number(binLogStats?.total_equiv) || entries.reduce((s, e) => s + (Number(e.bins_picked) || 0), 0);
     const binsRemaining  = Math.max(0, totalBins - totalPicked);
     const byVariety = {};
     for (const v of VARIETIES) {
