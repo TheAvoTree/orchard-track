@@ -43,7 +43,11 @@ function daysAgo(dateStr) {
   return Math.round((today - d) / 86400000);
 }
 
-const TODAY = toYMD(new Date());
+// Always computed fresh in NZ local time — avoids stale date if page stays open overnight
+function getNZToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' });
+}
+const TODAY = getNZToday();
 
 // Start of current week (Monday)
 function weekStart() {
@@ -352,7 +356,7 @@ function BinLogSearch({ bins, currentSeason }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PickingLogPage() {
-  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [selectedDate, setSelectedDate] = useState(() => getNZToday());
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -378,6 +382,10 @@ export default function PickingLogPage() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailMsg, setEmailMsg] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
   async function handleSync() {
     setSyncing(true); setSyncMsg('');
     try {
@@ -546,6 +554,12 @@ export default function PickingLogPage() {
               borderRadius: 8, border: '1.5px solid #a8d8a8', background: syncing ? '#e8f5e8' : '#f0faf0',
               cursor: syncing ? 'default' : 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
             {syncing ? '⟳ Syncing…' : '⇅ Sync from AvoGrade'}
+          </button>
+          <button onClick={() => { setEmailResult(null); setShowEmailModal(true); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.38rem 0.9rem',
+              borderRadius: 8, border: '1.5px solid #a8d8a8', background: '#f0faf0',
+              cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a1f' }}>
+            ✉ Email Growers
           </button>
         </div>
       </div>
@@ -791,6 +805,137 @@ export default function PickingLogPage() {
         </div>
 
       </div>
+
+      {/* ── Email Growers Modal ─────────────────────────────────────────── */}
+      {showEmailModal && (() => {
+        const ws = weekStart();
+        const today = getNZToday();
+        // Aggregate bins for this week from already-loaded bins
+        const weekBins = (bins || []).filter(b => {
+          const d = toYMD(new Date(b.date_picked + 'T12:00:00'));
+          return d >= ws && d <= today;
+        });
+        const byGrower = {};
+        for (const b of weekBins) {
+          const key = b.grower;
+          if (!key) continue;
+          if (!byGrower[key]) byGrower[key] = { equiv: 0, bins: 0 };
+          byGrower[key].equiv += Number(b.bin_equivalent || 1);
+          byGrower[key].bins  += 1;
+        }
+        const rows = Object.entries(byGrower).sort((a, b) => a[0].localeCompare(b[0]));
+
+        async function handleSend(dryRun = false) {
+          setEmailSending(true);
+          setEmailResult(null);
+          try {
+            const r = await fetch(`${BACKEND}/api/harvest/bin-log/email-weekly`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ from: ws, to: today, message: emailMsg, dry_run: dryRun }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Failed');
+            setEmailResult(d);
+          } catch (e) {
+            setEmailResult({ error: e.message });
+          } finally {
+            setEmailSending(false);
+          }
+        }
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowEmailModal(false); }}>
+            <div style={{ background: '#fff', borderRadius: 12, padding: '1.5rem', width: '100%',
+              maxWidth: 560, maxHeight: '90vh', overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, color: '#1c2b1e', fontSize: '1.05rem' }}>✉ Email Growers — This Week</h3>
+                <button onClick={() => setShowEmailModal(false)}
+                  style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#888' }}>✕</button>
+              </div>
+
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: '#5a6a5a' }}>
+                {ws} → {today} · {rows.length} grower{rows.length !== 1 ? 's' : ''} with bins this week
+              </p>
+
+              {/* Grower preview table */}
+              {rows.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', marginBottom: '1rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f5f9f5', borderBottom: '2px solid #d4e0d4' }}>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', color: '#2d6a2d', fontWeight: 700 }}>Grower</th>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', color: '#2d6a2d', fontWeight: 700 }}>Bins</th>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', color: '#2d6a2d', fontWeight: 700 }}>Equiv</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(([grower, data], i) => (
+                      <tr key={grower} style={{ background: i % 2 === 0 ? '#fff' : '#fafcfa', borderBottom: '1px solid #eef2ee' }}>
+                        <td style={{ padding: '0.4rem 0.6rem' }}>{grower}</td>
+                        <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center' }}>{data.bins}</td>
+                        <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 600, color: '#2d6a2d' }}>{data.equiv.toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>No bins recorded this week.</p>
+              )}
+
+              {/* Custom message */}
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#2d6a2d', marginBottom: '0.3rem' }}>
+                Custom message (optional)
+              </label>
+              <textarea
+                value={emailMsg}
+                onChange={e => setEmailMsg(e.target.value)}
+                placeholder="Add a personal note to include above the bin summary…"
+                rows={4}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #d4e0d4', borderRadius: 6,
+                  padding: '0.5rem 0.6rem', fontSize: '0.85rem', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+
+              {/* Result feedback */}
+              {emailResult && (
+                <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.8rem', borderRadius: 6,
+                  background: emailResult.error ? '#f8d7da' : '#d4edda',
+                  color: emailResult.error ? '#721c24' : '#155724', fontSize: '0.83rem' }}>
+                  {emailResult.error
+                    ? `Error: ${emailResult.error}`
+                    : emailResult.results
+                      ? emailResult.results.map(r =>
+                          `${r.grower}: ${r.status === 'dry_run' ? `preview (${r.equiv?.toFixed(1)} eq)` : r.sent ? '✓ sent' : r.status === 'no_email' ? 'no email on file' : `✗ ${r.error}`}`
+                        ).join('\n')
+                      : `Sent ${emailResult.sent}, skipped ${emailResult.skipped}`
+                  }
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', justifyContent: 'flex-end' }}>
+                <button onClick={() => handleSend(true)} disabled={emailSending || !rows.length}
+                  style={{ padding: '0.4rem 0.9rem', borderRadius: 7, border: '1.5px solid #d4e0d4',
+                    background: '#fff', cursor: emailSending || !rows.length ? 'default' : 'pointer',
+                    fontSize: '0.82rem', fontWeight: 600, color: '#5a6a5a', opacity: rows.length ? 1 : 0.5 }}>
+                  Preview
+                </button>
+                <button onClick={() => handleSend(false)} disabled={emailSending || !rows.length}
+                  style={{ padding: '0.4rem 1.1rem', borderRadius: 7, border: 'none',
+                    background: emailSending || !rows.length ? '#a8d8a8' : '#2d6a2d',
+                    cursor: emailSending || !rows.length ? 'default' : 'pointer',
+                    fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>
+                  {emailSending ? 'Sending…' : `Send to ${rows.length} grower${rows.length !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }

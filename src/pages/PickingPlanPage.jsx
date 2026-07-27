@@ -520,6 +520,7 @@ export default function PickingPlanPage() {
                         dmDate={entry.dm_date}
                         dmRate={dmRate}
                         dmTarget={dmTarget}
+                        status={entry.status}
                       />
                     </td>
                     <td style={{ ...TD, textAlign: 'center', width: 28 }}>
@@ -650,7 +651,7 @@ function DmCell({ dmResult, dmDate, onSave }) {
 }
 
 // Read-only calculated safe-to-pick date
-function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
+function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget, status }) {
   if (!dmResult || !dmDate) {
     return <span style={{ color: '#bbb', fontSize: '0.78rem' }}>—</span>;
   }
@@ -659,6 +660,7 @@ function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
   if (!pick) return <span style={{ color: '#bbb', fontSize: '0.78rem' }}>—</span>;
 
   const { date, daysFromNow } = pick;
+  const picking = status === 'first_pick' || status === 'complete';
 
   // Already at or past target DM — ready now
   if (parseFloat(dmResult) >= parseFloat(dmTarget)) {
@@ -670,7 +672,7 @@ function SafeToPickCell({ dmResult, dmDate, dmRate, dmTarget }) {
   }
 
   let color, bg, label;
-  if (daysFromNow <= 0) {
+  if (daysFromNow <= 0 && !picking) {
     color = '#721c24'; bg = '#f8d7da'; label = 'Overdue';
   } else if (daysFromNow <= 7) {
     color = '#856404'; bg = '#fff3cd'; label = `${daysFromNow}d`;
