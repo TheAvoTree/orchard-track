@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import Dashboard from './pages/Dashboard.jsx';
 import GrowersPage from './pages/GrowersPage.jsx';
 import VehiclesPage from './pages/VehiclesPage.jsx';
@@ -23,6 +24,30 @@ const TABS = [
   { id: 'vehicles',     label: 'Fleet' },
   { id: 'settings',     label: 'Settings' },
 ];
+
+function UpdateBanner() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  if (!needRefresh) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+      background: '#1c2b1e', color: '#fff', borderRadius: 10,
+      padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
+      fontSize: '0.85rem', zIndex: 9999, boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+    }}>
+      <span>🥑 New version available</span>
+      <button
+        onClick={() => updateServiceWorker(true)}
+        style={{
+          background: '#2d6a2d', color: '#fff', border: 'none', borderRadius: 6,
+          padding: '0.3rem 0.75rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem',
+        }}
+      >
+        Update
+      </button>
+    </div>
+  );
+}
 
 export default function App() {
   const [tab, setTab] = useState('dashboard');
@@ -67,6 +92,7 @@ export default function App() {
         </nav>
       </header>
 
+      <UpdateBanner />
       <main className="app-main">
         {tab === 'dashboard'    && <Dashboard />}
         {tab === 'picking-plan' && <PickingPlanPage />}

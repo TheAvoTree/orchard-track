@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       // injectManifest lets us write our own SW file with push support
       strategies: 'injectManifest',
       srcDir: 'src',

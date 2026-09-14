@@ -1,8 +1,7 @@
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 
-// Immediately take control when a new SW is available — stops stale cache issues
-self.addEventListener('install',  () => self.skipWaiting());
-self.addEventListener('activate', e  => e.waitUntil(clients.claim()));
+// New SW waits for all tabs to close before activating — prevents the
+// autoUpdate + skipWaiting reload loop that was hammering /index.html
 
 // Workbox injects the precache manifest here at build time
 cleanupOutdatedCaches();
