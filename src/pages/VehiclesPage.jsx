@@ -447,10 +447,12 @@ function FleetMaintenance() {
 
 export default function VehiclesPage() {
   const { data, loading, refetch } = useApi('/api/vehicles');
-  const [tab,      setTab]      = useState('vehicles');
-  const [showForm, setShowForm] = useState(false);
-  const [form,     setForm]     = useState({ name: '', device_id: '', driver_name: '', asset_type: 'vehicle' });
-  const [saving,   setSaving]   = useState(false);
+  const [tab,           setTab]           = useState('vehicles');
+  const [showForm,      setShowForm]      = useState(false);
+  const [form,          setForm]          = useState({ name: '', device_id: '', driver_name: '', asset_type: 'vehicle' });
+  const [saving,        setSaving]        = useState(false);
+  const [editingAsset,  setEditingAsset]  = useState(null); // { id, name, device_id, driver_name, notes }
+  const [assetSaving,   setAssetSaving]   = useState(false);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -475,6 +477,35 @@ export default function VehiclesPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !v.active }),
     });
+    refetch();
+  }
+
+  async function saveAssetEdit() {
+    if (!editingAsset) return;
+    setAssetSaving(true);
+    try {
+      const res = await fetch(`/api/vehicles/${editingAsset.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingAsset.name,
+          device_id: editingAsset.device_id,
+          driver_name: editingAsset.driver_name,
+          notes: editingAsset.notes,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+      setEditingAsset(null);
+      refetch();
+    } catch (err) { alert(err.message); }
+    finally { setAssetSaving(false); }
+  }
+
+  async function removeAsset(v) {
+    if (!window.confirm(`Remove "${v.name}" from the fleet? This cannot be undone.`)) return;
+    const res = await fetch(`/api/vehicles/${v.id}`, { method: 'DELETE' });
+    if (!res.ok) { alert((await res.json()).error || 'Delete failed'); return; }
+    setEditingAsset(null);
     refetch();
   }
 
@@ -554,22 +585,61 @@ export default function VehiclesPage() {
                     <tr><th>Name</th><th>Type</th><th>Reg / ID</th><th>Driver</th><th>Status</th><th></th></tr>
                   </thead>
                   <tbody>
-                    {data.map(v => (
-                      <tr key={v.id}>
-                        <td style={{ fontWeight: 500 }}>{v.name}{v.notes && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#c47a00', fontStyle: 'italic' }}>{v.notes}</span>}</td>
-                        <td><span className="badge" style={{ background: '#e8f5e8', color: '#2d6a2d' }}>{TYPE_LABEL[v.asset_type]}</span></td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.83rem' }}>{v.device_id}</td>
-                        <td>{v.driver_name ?? '—'}</td>
-                        <td><span className="badge" style={v.active ? { background: '#d4edda', color: '#155724' } : { background: '#e2e3e5', color: '#495057' }}>
-                          {v.active ? 'Active' : 'Inactive'}</span></td>
-                        <td>
-                          <button className="btn btn-secondary" style={{ padding: '0.22rem 0.6rem', fontSize: '0.78rem' }}
-                            onClick={() => toggleActive(v)}>
-                            {v.active ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {data.map(v => {
+                      const isEditing = editingAsset?.id === v.id;
+                      return (
+                        <>
+                          <tr key={v.id}>
+                            <td style={{ fontWeight: 500 }}>{v.name}{v.notes && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#c47a00', fontStyle: 'italic' }}>{v.notes}</span>}</td>
+                            <td><span className="badge" style={{ background: '#e8f5e8', color: '#2d6a2d' }}>{TYPE_LABEL[v.asset_type]}</span></td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '0.83rem' }}>{v.device_id}</td>
+                            <td>{v.driver_name ?? '—'}</td>
+                            <td><span className="badge" style={v.active ? { background: '#d4edda', color: '#155724' } : { background: '#e2e3e5', color: '#495057' }}>
+                              {v.active ? 'Active' : 'Inactive'}</span></td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              <button className="btn btn-secondary" style={{ padding: '0.22rem 0.6rem', fontSize: '0.78rem', marginRight: 4 }}
+                                onClick={() => setEditingAsset(isEditing ? null : { id: v.id, name: v.name, device_id: v.device_id, driver_name: v.driver_name ?? '', notes: v.notes ?? '', asset_type: v.asset_type })}>
+                                {isEditing ? 'Cancel' : '✏ Edit'}
+                              </button>
+                              <button className="btn btn-secondary" style={{ padding: '0.22rem 0.6rem', fontSize: '0.78rem' }}
+                                onClick={() => toggleActive(v)}>
+                                {v.active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </td>
+                          </tr>
+                          {isEditing && (
+                            <tr key={`${v.id}-edit`} style={{ background: '#f5faf5' }}>
+                              <td colSpan={6} style={{ padding: '0.75rem 1rem', borderTop: '2px solid #2d6a2d' }}>
+                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                  <label style={lbl}>Name
+                                    <input value={editingAsset.name} onChange={e => setEditingAsset(a => ({ ...a, name: e.target.value }))} style={inputStyle} />
+                                  </label>
+                                  {editingAsset.asset_type !== 'machinery' && (
+                                    <label style={lbl}>Registration
+                                      <input value={editingAsset.device_id} onChange={e => setEditingAsset(a => ({ ...a, device_id: e.target.value }))} style={inputStyle} />
+                                    </label>
+                                  )}
+                                  {editingAsset.asset_type !== 'trailer' && (
+                                    <label style={lbl}>Driver
+                                      <input value={editingAsset.driver_name} onChange={e => setEditingAsset(a => ({ ...a, driver_name: e.target.value }))} style={inputStyle} />
+                                    </label>
+                                  )}
+                                  <label style={lbl}>Notes
+                                    <input value={editingAsset.notes} onChange={e => setEditingAsset(a => ({ ...a, notes: e.target.value }))} style={inputStyle} />
+                                  </label>
+                                  <button className="btn btn-primary" onClick={saveAssetEdit} disabled={assetSaving} style={{ alignSelf: 'flex-end' }}>
+                                    {assetSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button className="btn btn-secondary" onClick={() => removeAsset(v)} style={{ alignSelf: 'flex-end', color: '#c0392b', borderColor: '#e8b4b4' }}>
+                                    🗑 Remove
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
