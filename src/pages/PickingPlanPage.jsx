@@ -458,12 +458,12 @@ export default function PickingPlanPage() {
                       )}
                     </td>
                     <td style={{ ...TD, textAlign: 'center' }}>
-                      {vs ? (
-                        <span style={{ background: vs.bg, color: vs.fg, border: `1px solid ${vs.border}`,
-                          borderRadius: 10, padding: '1px 8px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          {entry.variety}
-                        </span>
-                      ) : <span style={{ color: '#bbb', fontSize: '0.75rem' }}>—</span>}
+                      <select value={entry.variety || ''}
+                        onChange={e => patch(entry.id, { variety: e.target.value || null })}
+                        style={{ border: '1px solid #d4e0d4', borderRadius: 4, padding: '0.2rem 0.25rem', fontSize: '0.8rem', background: vs ? vs.bg : '#fff', color: vs ? vs.fg : '#222' }}>
+                        <option value="">—</option>
+                        {VARIETIES.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
                     </td>
                     {showPrevBins && (
                       <td style={{ ...TD, textAlign: 'center', color: '#888', fontSize: '0.8rem' }}>
