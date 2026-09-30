@@ -5,6 +5,13 @@ import { useSettings } from '../hooks/useSettings.js';
 const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// For a Jul–Jun season, Jan–May (months 1–5) belong to the following calendar
+// year, so they should sort AFTER Jun–Dec. Map month → season order (1–17).
+function seasonMonth(m) {
+  if (m == null) return 99;
+  return m >= 6 ? m : m + 12; // Jun=6 … Dec=12, Jan=13 … May=17
+}
+
 function calcPickDate(dmResult, dmDate, dmRate, dmTarget) {
   if (!dmResult || !dmDate || !dmRate || !dmTarget) return null;
   const current = parseFloat(dmResult);
@@ -122,8 +129,8 @@ export default function PickingPlanPage() {
 
     if (sortCol === SORT_COLS.month) {
       return [...base].sort((a, b) => {
-        const ma = a.expected_month ?? 99;
-        const mb = b.expected_month ?? 99;
+        const ma = seasonMonth(a.expected_month);
+        const mb = seasonMonth(b.expected_month);
         if (ma !== mb) return (ma - mb) * dir;
         return (a.sort_order ?? 0) - (b.sort_order ?? 0);
       });
@@ -144,8 +151,8 @@ export default function PickingPlanPage() {
       if (pa && pb) return pa.daysFromNow - pb.daysFromNow;
       if (pa)  return -1;  // has DM → float up
       if (pb)  return 1;
-      const ma = a.expected_month ?? 99;
-      const mb = b.expected_month ?? 99;
+      const ma = seasonMonth(a.expected_month);
+      const mb = seasonMonth(b.expected_month);
       if (ma !== mb) return ma - mb;
       return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     });
